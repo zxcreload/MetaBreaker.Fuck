@@ -1,0 +1,393 @@
+local library = loadstring(game:GetObjects("rbxassetid://7657867786")[1].Source)()
+local Wait = library.subs.Wait
+
+-- Define SilentAim settings with all toggles off by default
+getgenv().SilentAim = {
+    Enabled = false,
+    Prediction = 0.165,
+    TargetPart = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"},
+    VisibleCheck = false,
+    HitChance = 100,
+    Keybind = Enum.KeyCode.E,
+    IgnoreRagdoll = false,
+    ResetTargetOnDeath = true
+}
+
+-- Services and Variables
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = Workspace.CurrentCamera
+local SilentAim = getgenv().SilentAim
+
+-- Functions defined before UI callbacks
+local function CalcChance(p)
+    return math.random() * 100 <= p
+end
+
+local function IsPartVisible(part, char)
+    local origin = Camera.CFrame.Position
+    local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+
+    if onScreen then
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        local result = Workspace:Raycast(origin, part.Position - origin, rayParams)
+        return not result or result.Instance:IsDescendantOf(char)
+    end
+
+    return false
+end
+
+local function Check()
+    local sel = SilentAim
+    if not (sel.Enabled and sel.Selected and sel.SelectedPart and sel.Selected ~= LocalPlayer) then return false end
+
+    local char = sel.Selected.Character
+    if not char then return false end
+
+    local ko = char:WaitForChild("BodyEffects"):FindFirstChild("K.O").Value
+    local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
+
+    if sel.IgnoreRagdoll then
+        return not grabbed
+    else
+        return not (ko or grabbed)
+    end
+end
+
+local function ClosestPart(char)
+    local closest, shortest = nil, math.huge
+    for _, partName in ipairs(SilentAim.TargetPart) do
+        local part = char:FindFirstChild(partName)
+        if part then
+            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+            if dist < shortest then
+                closest, shortest = part, dist
+            end
+        end
+    end
+    return closest
+end
+
+local function GetClosest()
+    if not CalcChance(SilentAim.HitChance) then
+        SilentAim.Selected = LocalPlayer
+        SilentAim.SelectedPart = nil
+        return
+    end
+
+    local closest, shortest = nil, math.huge
+    local targetPart = nil
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        local char = plr.Character
+        if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+            local part = ClosestPart(char)
+            if part then
+                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+
+                if dist < shortest and (not SilentAim.VisibleCheck or IsPartVisible(part, char)) then
+                    closest = plr
+                    targetPart = part
+                    shortest = dist
+                end
+            end
+        end
+    end
+
+    SilentAim.Selected = closest
+    SilentAim.SelectedPart = targetPart
+end
+
+-- Create the main window
+local MainWindow = library:CreateWindow({
+    Name = "Aimbot GUI",
+    Themeable = {
+        Info = "Silent Aimbot GUI"
+    }
+})
+
+-- Create tabs
+local CombatTab = MainWindow:CreateTab({
+    Name = "Combat"
+})
+
+local VisualsTab = MainWindow:CreateTab({
+    Name = "Visuals"
+})
+
+local MovementTab = MainWindow:CreateTab({
+    Name = "Movement"
+})
+
+local MiscTab = MainWindow:CreateTab({
+    Name = "Misc"
+})
+
+local OtherTab = MainWindow:CreateTab({
+    Name = "Other"
+})
+
+local TargetTab = MainWindow:CreateTab({
+    Name = "Target"
+})
+
+-- Create Combat section for Silent Aimbot
+local AimbotSection = CombatTab:CreateSection({
+    Name = "Silent Aimbot",
+    Side = "Left"
+})
+
+-- Silent Aimbot UI Elements
+AimbotSection:AddToggle({
+    Name = "Aimbot Enabled",
+    Flag = "AimbotSection_Enabled",
+    Value = false,
+    Callback = function(state)
+        getgenv().SilentAim.Enabled = state
+        print("Aimbot " .. (state and "enabled" or "disabled"))
+    end
+})
+
+AimbotSection:AddToggle({
+    Name = "Wall Check",
+    Flag = "AimbotSection_WallCheck",
+    Value = false,
+    Callback = function(state)
+        getgenv().SilentAim.VisibleCheck = state
+        print("Wall Check " .. (state and "enabled" or "disabled"))
+    end
+})
+
+AimbotSection:AddToggle({
+    Name = "Ragdoll Check",
+    Flag = "AimbotSection_RagdollCheck",
+    Value = false,
+    Callback = function(state)
+        getgenv().SilentAim.IgnoreRagdoll = state
+        print("Ragdoll Check " .. (state and "enabled" or "disabled"))
+    end
+})
+
+AimbotSection:AddToggle({
+    Name = "Reset Target on Death",
+    Flag = "AimbotSection_ResetTargetOnDeath",
+    Value = true,
+    Callback = function(state)
+        getgenv().SilentAim.ResetTargetOnDeath = state
+        print("Reset Target on Death " .. (state and "enabled" or "disabled"))
+    end
+})
+
+AimbotSection:AddKeybind({
+    Name = "Target Find Keybind",
+    Flag = "AimbotSection_TargetKeybind",
+    Value = getgenv().SilentAim.Keybind,
+    Callback = function(newKey)
+        getgenv().SilentAim.Keybind = newKey
+        print("Keybind updated to: " .. tostring(newKey))
+    end,
+    Pressed = function()
+        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+            SilentAim.Selected = LocalPlayer
+            SilentAim.SelectedPart = nil
+            print("Target deselected")
+        else
+            GetClosest()
+            print("Target selected: " .. (SilentAim.Selected and SilentAim.Selected.Name or "None"))
+        end
+    end
+})
+
+AimbotSection:AddTextbox({
+    Name = "Aimbot Prediction",
+    Flag = "AimbotSection_Prediction",
+    Value = tostring(getgenv().SilentAim.Prediction),
+    Type = "number",
+    Callback = function(value)
+        local num = tonumber(value)
+        if num then
+            getgenv().SilentAim.Prediction = num
+            print("Prediction set to: " .. num)
+        end
+    end
+})
+
+AimbotSection:AddDropdown({
+    Name = "Target Part",
+    Flag = "AimbotSection_TargetPart",
+    List = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"},
+    Value = getgenv().SilentAim.TargetPart[1],
+    Callback = function(value)
+        getgenv().SilentAim.TargetPart = {value}
+        print("Target part set to: " .. value)
+    end
+})
+
+AimbotSection:AddToggle({
+    Name = "Aimbot Visualizer",
+    Flag = "AimbotSection_Visualizer",
+    Value = false,
+    Callback = function(state)
+        print("Visualizer " .. (state and "enabled" or "disabled"))
+    end
+})
+
+AimbotSection:AddColorpicker({
+    Name = "Visualizer Color",
+    Flag = "AimbotSection_VisualizerColor",
+    Value = Color3.fromRGB(255, 0, 0),
+    Callback = function(color)
+        print("Visualizer color changed to: " .. tostring(color))
+    end
+})
+
+AimbotSection:AddSlider({
+    Name = "Visualizer Thickness",
+    Flag = "AimbotSection_VisualizerThickness",
+    Value = 0.2,
+    Min = 0.1,
+    Max = 1,
+    Precise = 2,
+    Callback = function(value)
+        print("Visualizer thickness set to: " .. value)
+    end
+})
+
+AimbotSection:AddSlider({
+    Name = "Visualizer Transparency",
+    Flag = "AimbotSection_VisualizerTransparency",
+    Value = 0,
+    Min = 0,
+    Max = 1,
+    Precise = 2,
+    Format = function(value)
+        return "Transparency: " .. math.floor(value * 100) .. "%"
+    end
+})
+
+-- Silent Aimbot Code (integrated)
+--[[ Adonis Anti-Cheat Bypass ]]
+for _, v in pairs(getgc(true)) do
+    if type(v) == "table" then
+        setreadonly(v, false)
+        local indexInstance = rawget(v, "indexInstance")
+        if type(indexInstance) == "table" and indexInstance[1] == "kick" then
+            setreadonly(indexInstance, false)
+            rawset(v, "Table", {"kick", function() coroutine.yield() end})
+            warn("\n---[ INFO ]---\nBypassed Adonis Anti-Cheat/Anti-Exploit.\nMethod: Prevented Script Table Communication With Server.")
+            break
+        end
+    end
+end
+
+--[[ Beam Variables ]]
+local Beam, StartAttachment, EndAttachment
+
+--[[ Initialize Beam ]]
+local function InitBeam()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+
+    StartAttachment = Instance.new("Attachment")
+    EndAttachment = Instance.new("Attachment")
+
+    Beam = Instance.new("Beam")
+    Beam.Attachment0 = StartAttachment
+    Beam.Attachment1 = EndAttachment
+    Beam.Enabled = false
+    Beam.Parent = Workspace
+end
+
+InitBeam()
+
+SilentAim.Selected = nil
+SilentAim.SelectedPart = nil
+
+--[[ Update Beam ]]
+local function UpdateTracer()
+    -- Check the state of the "Aimbot Visualizer" toggle using the library flag
+    local visualizerEnabled = library.Flags["AimbotSection_Visualizer"] or false
+    -- Get current values from UI flags
+    local beamColor = library.Flags["AimbotSection_VisualizerColor"] or Color3.fromRGB(255, 0, 0)
+    local beamThickness = library.Flags["AimbotSection_VisualizerThickness"] or 0.2
+    local beamTransparency = library.Flags["AimbotSection_VisualizerTransparency"] or 0
+
+    -- Apply the properties to the Beam
+    Beam.Color = ColorSequence.new(beamColor)
+    Beam.Width0 = beamThickness
+    Beam.Width1 = beamThickness
+    Beam.Transparency = NumberSequence.new(beamTransparency)
+
+    Beam.Enabled = false
+    if not visualizerEnabled then return end
+    if not SilentAim.SelectedPart or not Check() then return end
+
+    local lChar = LocalPlayer.Character
+    if not lChar and SilentAim.ResetTargetOnDeath then return end
+    if not lChar then
+        StartAttachment.Parent = nil
+        EndAttachment.Parent = nil
+        StartAttachment.WorldPosition = Camera.CFrame.Position
+        EndAttachment.WorldPosition = SilentAim.SelectedPart.Position + (SilentAim.SelectedPart.Velocity * SilentAim.Prediction)
+        Beam.Enabled = true
+        return
+    end
+
+    local lHead = lChar:FindFirstChild("Head")
+    local tChar = SilentAim.Selected.Character
+    local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+
+    if lHead and tRoot then
+        StartAttachment.Parent = lHead
+        EndAttachment.Parent = tRoot
+        StartAttachment.WorldPosition = lHead.Position
+        EndAttachment.WorldPosition = tRoot.Position + (tRoot.Velocity * SilentAim.Prediction)
+        Beam.Enabled = true
+    end
+end
+
+-- Reset target on death if the toggle is enabled
+LocalPlayer.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    humanoid.Died:Connect(function()
+        if SilentAim.ResetTargetOnDeath then
+            SilentAim.Selected = LocalPlayer
+            SilentAim.SelectedPart = nil
+            print("Local player died, target reset")
+        else
+            print("Local player died, target retained")
+        end
+    end)
+end)
+
+--[[ Hook Mouse.Hit / Mouse.Target ]]
+local __index
+__index = hookmetamethod(game, "__index", function(t, k)
+    if t:IsA("Mouse") and (k == "Hit" or k == "Target") and Check() then
+        local selPart = SilentAim.SelectedPart
+        if selPart then
+            local hit = selPart.CFrame + (selPart.Velocity * SilentAim.Prediction)
+            return k == "Hit" and hit or selPart
+        end
+    end
+    return __index(t, k)
+end)
+
+RunService.Heartbeat:Connect(UpdateTracer)
+
+-- Cleanup function (kept for potential future use, but button removed)
+local function cleanup()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+end
