@@ -1,0 +1,209 @@
+--[[ Adonis Anti-Cheat Bypass ]]
+for _, v in pairs(getgc(true)) do
+    if type(v) == "table" then
+        setreadonly(v, false)
+        local indexInstance = rawget(v, "indexInstance")
+        if type(indexInstance) == "table" and indexInstance[1] == "kick" then
+            setreadonly(indexInstance, false)
+            rawset(v, "Table", {"kick", function() coroutine.yield() end})
+            warn("\n---[ INFO ]---\nBypassed Adonis Anti-Cheat/Anti-Exploit.\nMethod: Prevented Script Table Communication With Server.")
+            break
+        end
+    end
+end
+
+--[[ Настройки Silent Aim ]]
+getgenv().SilentAim = {
+    Enabled = true,
+    Prediction = 0.165,
+    TargetPart = {"Head", "HumanoidRootPart"},
+    VisibleCheck = true,
+    HitChance = 100,
+    Keybind = Enum.KeyCode.E,
+    IgnoreRagdoll = true
+}
+
+--[[ Сервисы ]]
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+--[[ Переменные ]]
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = Workspace.CurrentCamera
+local SilentAim = getgenv().SilentAim
+
+--[[ Beam Variables ]]
+local Beam, StartAttachment, EndAttachment
+
+--[[ Инициализация Beam ]]
+local function InitBeam()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+
+    StartAttachment = Instance.new("Attachment")
+    EndAttachment = Instance.new("Attachment")
+
+    Beam = Instance.new("Beam")
+    Beam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+    Beam.Width0 = 0.2
+    Beam.Width1 = 0.2
+    Beam.Transparency = NumberSequence.new(0)
+    Beam.Attachment0 = StartAttachment
+    Beam.Attachment1 = EndAttachment
+    Beam.Enabled = false
+    Beam.Parent = Workspace
+end
+
+InitBeam()
+
+SilentAim.Selected = nil
+SilentAim.SelectedPart = nil
+
+--[[ Проверка шанса попадания ]]
+local function CalcChance(p)
+    return math.random() * 100 <= p
+end
+
+--[[ Проверка видимости ]]
+local function IsPartVisible(part, char)
+    local origin = Camera.CFrame.Position
+    local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+
+    if onScreen then
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        local result = Workspace:Raycast(origin, part.Position - origin, rayParams)
+        return not result or result.Instance:IsDescendantOf(char)
+    end
+
+    return false
+end
+
+--[[ Проверка состояния цели ]]
+local function Check()
+    local sel = SilentAim
+    if not (sel.Enabled and sel.Selected and sel.SelectedPart and sel.Selected ~= LocalPlayer) then return false end
+
+    local char = sel.Selected.Character
+    if not char then return false end
+
+    local ko = char:WaitForChild("BodyEffects"):FindFirstChild("K.O").Value
+    local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
+
+    if sel.IgnoreRagdoll then
+        return not grabbed
+    else
+        return not (ko or grabbed)
+    end
+end
+
+--[[ Получение ближайшей части тела ]]
+local function ClosestPart(char)
+    local closest, shortest = nil, math.huge
+    for _, partName in ipairs(SilentAim.TargetPart) do
+        local part = char:FindFirstChild(partName)
+        if part then
+            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+            if dist < shortest then
+                closest, shortest = part, dist
+            end
+        end
+    end
+    return closest
+end
+
+--[[ Получение ближайшего игрока ]]
+local function GetClosest()
+    if not CalcChance(SilentAim.HitChance) then
+        SilentAim.Selected = LocalPlayer
+        SilentAim.SelectedPart = nil
+        return
+    end
+
+    local closest, shortest = nil, math.huge
+    local targetPart = nil
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        local char = plr.Character
+        if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+            local part = ClosestPart(char)
+            if part then
+                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+
+                if dist < shortest and (not SilentAim.VisibleCheck or IsPartVisible(part, char)) then
+                    closest = plr
+                    targetPart = part
+                    shortest = dist
+                end
+            end
+        end
+    end
+
+    SilentAim.Selected = closest
+    SilentAim.SelectedPart = targetPart
+end
+
+--[[ Обновление Beam ]]
+local function UpdateTracer()
+    Beam.Enabled = false
+    if not SilentAim.SelectedPart or not Check() then return end
+
+    local lChar = LocalPlayer.Character
+    if not lChar then return end
+
+    local lHead = lChar:FindFirstChild("Head")
+    local tChar = SilentAim.Selected.Character
+    local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+
+    if lHead and tRoot then
+        StartAttachment.Parent = lHead
+        EndAttachment.Parent = tRoot
+        StartAttachment.WorldPosition = lHead.Position
+        EndAttachment.WorldPosition = tRoot.Position + (tRoot.Velocity * SilentAim.Prediction)
+        Beam.Enabled = true
+    end
+end
+
+--[[ Выбор цели по клавише ]]
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == SilentAim.Keybind then
+        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+            SilentAim.Selected = LocalPlayer
+            SilentAim.SelectedPart = nil
+        else
+            GetClosest()
+        end
+    end
+end)
+
+--[[ Хук на Mouse.Hit / Mouse.Target ]]
+local __index
+__index = hookmetamethod(game, "__index", function(t, k)
+    if t:IsA("Mouse") and (k == "Hit" or k == "Target") and Check() then
+        local selPart = SilentAim.SelectedPart
+        if selPart then
+            local hit = selPart.CFrame + (selPart.Velocity * SilentAim.Prediction)
+            return k == "Hit" and hit or selPart
+        end
+    end
+    return __index(t, k)
+end)
+
+--[[ Heartbeat обновление Beam ]]
+RunService.Heartbeat:Connect(UpdateTracer)
+
+--[[ Очистка при выходе ]]
+game:BindToClose(function()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+end)
