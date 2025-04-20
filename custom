@@ -85,26 +85,27 @@ function Library:Window(options)
     SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
     local Body = Instance.new("Frame", SG)
-    Body.BackgroundColor3, Body.BorderSizePixel, Body.Position, Body.Size = Color3.fromRGB(51, 51, 51), 0, UDim2.new(0.27839, 0, 0.03317, 0), UDim2.new(0, 550, 0, 760)
+    Body.BackgroundColor3, Body.BorderSizePixel, Body.Position, Body.Size = Color3.fromRGB(30, 30, 30), 0, UDim2.new(0.27839, 0, 0.03317, 0), UDim2.new(0, 550, 0, 760)
     local BodyStroke = Instance.new("UIStroke", Body)
-    BodyStroke.Color, BodyStroke.Thickness = Color3.fromRGB(255, 171, 0), 0.89
+    BodyStroke.Color, BodyStroke.Thickness = Color3.fromRGB(255, 171, 0), 1
+    local BodyCorner = Instance.new("UICorner", Body)
+    BodyCorner.CornerRadius = UDim.new(0, 8)
     Dragify(Body)
 
     local Header = Instance.new("TextLabel", Body)
-    Header.BackgroundTransparency, Header.BorderSizePixel, Header.Position, Header.Size, Header.FontFace, Header.Text, Header.TextColor3, Header.TextSize, Header.TextWrapped, Header.TextXAlignment, Header.TextStrokeColor3 = 1, 10, UDim2.new(0, 0, -0.00132, 0), UDim2.new(0, 550, 0, 20), Font.new("rbxasset://fonts/families/RobotoMono.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(255, 255, 255), 20, true, Enum.TextXAlignment.Left, Color3.fromRGB(24, 229, 248)
-    Header.BorderColor3 = Color3.fromRGB(255, 171, 0)
+    Header.BackgroundTransparency, Header.BorderSizePixel, Header.Position, Header.Size, Header.FontFace, Header.Text, Header.TextColor3, Header.TextSize, Header.TextWrapped, Header.TextXAlignment = 1, 0, UDim2.new(0.03, 0, 0.01, 0), UDim2.new(0, 510, 0, 25), Font.new("rbxasset://fonts/families/RobotoMono.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(255, 255, 255), 20, true, Enum.TextXAlignment.Left
 
     local HeaderLine = Instance.new("Frame", Body)
-    HeaderLine.BackgroundColor3, HeaderLine.BorderSizePixel, HeaderLine.Position, HeaderLine.Size = Color3.fromRGB(255, 171, 0), 0, UDim2.new(-0.00182, 0, 0.05395, 0), UDim2.new(0, 550, 0, 1)
+    HeaderLine.BackgroundColor3, HeaderLine.BorderSizePixel, HeaderLine.Position, HeaderLine.Size = Color3.fromRGB(255, 171, 0), 0, UDim2.new(0, 0, 0.05, 0), UDim2.new(1, 0, 0, 2)
 
     local allPages = Instance.new("Frame", Body)
-    allPages.BackgroundTransparency, allPages.BorderSizePixel, allPages.Position, allPages.Size = 1, 0, UDim2.new(0.02727, 0, 0.08158, 0), UDim2.new(0, 520, 0, 681)
+    allPages.BackgroundTransparency, allPages.BorderSizePixel, allPages.Position, allPages.Size = 1, 0, UDim2.new(0.03, 0, 0.09, 0), UDim2.new(0, 520, 0, 670)
 
     local tabContainer = Instance.new("Frame", Body)
-    tabContainer.BackgroundTransparency, tabContainer.BorderSizePixel, tabContainer.Position, tabContainer.Size, tabContainer.Name = 1, 0, UDim2.new(0, 0, 0.02632, 0), UDim2.new(0, 550, 0, 20), "TabsHolder"
+    tabContainer.BackgroundTransparency, tabContainer.BorderSizePixel, tabContainer.Position, tabContainer.Size, tabContainer.Name = 1, 0, UDim2.new(0.03, 0, 0.055, 0), UDim2.new(0, 510, 0, 25), "TabsHolder"
 
     local containerLayout = Instance.new("UIListLayout", tabContainer)
-    containerLayout.FillDirection, containerLayout.SortOrder, containerLayout.Padding = Enum.FillDirection.Horizontal, Enum.SortOrder.LayoutOrder, UDim.new(0, 0)
+    containerLayout.FillDirection, containerLayout.SortOrder, containerLayout.Padding = Enum.FillDirection.Horizontal, Enum.SortOrder.LayoutOrder, UDim.new(0, 8)
 
     local tabsections = {}
 
@@ -115,12 +116,14 @@ function Library:Window(options)
         function tabs:Tab(options)
             options.text, options.icon = options.text or "New Tab", options.icon or ""
             local tabButton = Instance.new("TextButton", tabContainer)
-            tabButton.BackgroundColor3, tabButton.BorderSizePixel, tabButton.Size, tabButton.AutoButtonColor, tabButton.FontFace, tabButton.Text, tabButton.TextColor3, tabButton.TextSize, tabButton.TextStrokeTransparency = Color3.fromRGB(90, 90, 90), 0, UDim2.new(0, 110, 0, 20), false, Font.new("rbxasset://fonts/families/RobotoMono.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(255, 255, 255), 17, 0.9
+            tabButton.BackgroundColor3, tabButton.BorderSizePixel, tabButton.Size, tabButton.AutoButtonColor, tabButton.FontFace, tabButton.Text, tabButton.TextColor3, tabButton.TextSize = Color3.fromRGB(45, 45, 45), 0, UDim2.new(0, 110, 0, 25), false, Font.new("rbxasset://fonts/families/RobotoMono.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(255, 255, 255), 16
+            local tabButtonCorner = Instance.new("UICorner", tabButton)
+            tabButtonCorner.CornerRadius = UDim.new(0, 6)
             local tabButtonStroke = Instance.new("UIStroke", tabButton)
-            tabButtonStroke.ApplyStrokeMode, tabButtonStroke.Thickness, tabButtonStroke.Color = Enum.ApplyStrokeMode.Border, 0.7, Color3.fromRGB(255, 171, 0)
+            tabButtonStroke.ApplyStrokeMode, tabButtonStroke.Thickness, tabButtonStroke.Color = Enum.ApplyStrokeMode.Border, 1, Color3.fromRGB(255, 171, 0)
 
             local newPage = Instance.new("ScrollingFrame", allPages)
-            newPage.Visible, newPage.BackgroundTransparency, newPage.BorderSizePixel, newPage.Position, newPage.Size, newPage.ScrollBarThickness, newPage.CanvasSize = false, 1, 0, UDim2.new(0, 0, 0, 0), UDim2.new(0, 520, 0, 681), 4, UDim2.new(0, 0, 0, 0)
+            newPage.Visible, newPage.BackgroundTransparency, newPage.BorderSizePixel, newPage.Position, newPage.Size, newPage.ScrollBarThickness, newPage.CanvasSize = false, 1, 0, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 1, 0), 4, UDim2.new(0, 0, 0, 0)
 
             local pageLayout = Instance.new("UIGridLayout", newPage)
             pageLayout.SortOrder, pageLayout.CellPadding, pageLayout.CellSize = Enum.SortOrder.LayoutOrder, UDim2.new(0, 14, 0, 12), UDim2.new(0, 250, 0, -10)
@@ -135,10 +138,10 @@ function Library:Window(options)
                 newPage.Visible = true
                 for _, v in next, tabContainer:GetChildren() do
                     if v:IsA("TextButton") then
-                        TweenService:Create(v, TweenInfo.new(0.06, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {BackgroundColor3 = Color3.fromRGB(90, 90, 90)}):Play()
+                        TweenService:Create(v, TweenInfo.new(0.06, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play()
                     end
                 end
-                TweenService:Create(tabButton, TweenInfo.new(0.06, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {BackgroundColor3 = Color3.fromRGB(120, 120, 120)}):Play()
+                TweenService:Create(tabButton, TweenInfo.new(0.06, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
             end)
 
             local sections = {}
@@ -146,15 +149,17 @@ function Library:Window(options)
             function sections:Section(options)
                 options.text = options.text or "Section"
                 local sectionFrame = Instance.new("Frame", newPage)
-                sectionFrame.BackgroundColor3, sectionFrame.BorderSizePixel, sectionFrame.Size = Color3.fromRGB(90, 90, 90), 0, UDim2.new(0, 250, 0, 134)
+                sectionFrame.BackgroundColor3, sectionFrame.BorderSizePixel, sectionFrame.Size = Color3.fromRGB(40, 40, 40), 0, UDim2.new(0, 250, 0, 134)
+                local sectionCorner = Instance.new("UICorner", sectionFrame)
+                sectionCorner.CornerRadius = UDim.new(0, 6)
                 local sectionStroke = Instance.new("UIStroke", sectionFrame)
                 sectionStroke.Color, sectionStroke.Thickness = Color3.fromRGB(255, 171, 0), 0.5
 
                 local sectionLabel = Instance.new("TextLabel", sectionFrame)
-                sectionLabel.BackgroundTransparency, sectionLabel.BorderSizePixel, sectionLabel.Position, sectionLabel.Size, sectionLabel.FontFace, sectionLabel.Text, sectionLabel.TextColor3, sectionLabel.TextSize, sectionLabel.TextXAlignment = 1, 0, UDim2.new(0.012, 0, 0, 0), UDim2.new(0, 248, 0, 25), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), "   " .. options.text, Color3.fromRGB(255, 255, 255), 18, Enum.TextXAlignment.Left
+                sectionLabel.BackgroundTransparency, sectionLabel.BorderSizePixel, sectionLabel.Position, sectionLabel.Size, sectionLabel.FontFace, sectionLabel.Text, sectionLabel.TextColor3, sectionLabel.TextSize, sectionLabel.TextXAlignment = 1, 0, UDim2.new(0.05, 0, 0.03, 0), UDim2.new(0.9, 0, 0, 25), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(255, 255, 255), 18, Enum.TextXAlignment.Left
 
                 local sectionLayout = Instance.new("UIListLayout", sectionFrame)
-                sectionLayout.HorizontalAlignment, sectionLayout.SortOrder, sectionLayout.Padding = Enum.HorizontalAlignment.Center, Enum.SortOrder.LayoutOrder, UDim.new(0, 2)
+                sectionLayout.HorizontalAlignment, sectionLayout.SortOrder, sectionLayout.Padding = Enum.HorizontalAlignment.Center, Enum.SortOrder.LayoutOrder, UDim.new(0, 5)
 
                 local sectionSizeConstraint = Instance.new("UISizeConstraint", sectionFrame)
                 sectionSizeConstraint.MinSize = Vector2.new(250, 35)
@@ -166,34 +171,40 @@ function Library:Window(options)
                 function elements:Button(options)
                     if not options.text or not options.callback then Notify("Button", "Missing arguments!") return end
                     local TextButton = Instance.new("TextButton", sectionFrame)
-                    TextButton.BackgroundColor3, TextButton.BorderSizePixel, TextButton.Size, TextButton.AutoButtonColor, TextButton.Text, TextButton.FontFace, TextButton.TextColor3, TextButton.TextSize, TextButton.BackgroundTransparency = Color3.fromRGB(90, 90, 90), 0, UDim2.new(0, 232, 0, 20), false, options.text, Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), Color3.fromRGB(200, 200, 200), 18, 0.9
+                    TextButton.BackgroundColor3, TextButton.Size, TextButton.AutoButtonColor, TextButton.Text, TextButton.FontFace, TextButton.TextColor3, TextButton.TextSize, TextButton.BackgroundTransparency = Color3.fromRGB(55, 55, 55), UDim2.new(0, 220, 0, 30), false, options.text, Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), Color3.fromRGB(200, 200, 200), 16, 0
+                    local buttonCorner = Instance.new("UICorner", TextButton)
+                    buttonCorner.CornerRadius = UDim.new(0, 4)
                     local buttonStroke = Instance.new("UIStroke", TextButton)
-                    buttonStroke.Color, buttonStroke.Thickness = Color3.fromRGB(255, 171, 0), 0.5
+                    buttonStroke.Color, buttonStroke.Thickness = Color3.fromRGB(255, 171, 0), 1
+                    TextButton.Position = UDim2.new(0.06, 0, 0, sectionSizeConstraint.MinSize.Y - 5)
                     buttoneffect({frame = TextButton, entered = TextButton})
                     clickEffect({button = TextButton, amount = 5})
                     TextButton.MouseButton1Click:Connect(options.callback)
-                    Resize(25)
+                    Resize(35)
                 end
 
                 function elements:Toggle(options)
                     if not options.text or not options.callback then Notify("Toggle", "Missing arguments!") return end
                     local toggleFrame = Instance.new("Frame", sectionFrame)
-                    toggleFrame.BackgroundTransparency, toggleFrame.Size = 1, UDim2.new(0, 232, 0, 20)
+                    toggleFrame.BackgroundColor3, toggleFrame.Size = Color3.fromRGB(55, 55, 55), UDim2.new(0, 220, 0, 30)
+                    local toggleCorner = Instance.new("UICorner", toggleFrame)
+                    toggleCorner.CornerRadius = UDim.new(0, 4)
+                    toggleFrame.Position = UDim2.new(0.06, 0, 0, sectionSizeConstraint.MinSize.Y - 5)
 
                     local toggleLabel = Instance.new("TextLabel", toggleFrame)
-                    toggleLabel.BackgroundTransparency, toggleLabel.Position, toggleLabel.Size, toggleLabel.FontFace, toggleLabel.Text, toggleLabel.TextColor3, toggleLabel.TextSize, toggleLabel.TextXAlignment = 1, UDim2.new(0, 0, 0, 0), UDim2.new(0, 232, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), " " .. options.text, Color3.fromRGB(200, 200, 200), 18, Enum.TextXAlignment.Left
+                    toggleLabel.BackgroundTransparency, toggleLabel.Position, toggleLabel.Size, toggleLabel.FontFace, toggleLabel.Text, toggleLabel.TextColor3, toggleLabel.TextSize, toggleLabel.TextXAlignment = 1, UDim2.new(0, 10, 0, 0), UDim2.new(0.65, 0, 1, 0), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(200, 200, 200), 16, Enum.TextXAlignment.Left
                     buttoneffect({frame = toggleLabel, entered = toggleLabel})
 
                     local switcher = Instance.new("Frame", toggleFrame)
-                    switcher.BackgroundColor3, switcher.BorderSizePixel, switcher.Position, switcher.Size = Color3.fromRGB(51, 51, 51), 0, UDim2.new(0.42727, 0, 0, 0), UDim2.new(0, 20, 0, 20)
+                    switcher.BackgroundColor3, switcher.Position, switcher.Size = Color3.fromRGB(45, 45, 45), UDim2.new(0.82, 0, 0.15, 0), UDim2.new(0, 35, 0, 20)
+                    local switcherCorner = Instance.new("UICorner", switcher)
+                    switcherCorner.CornerRadius = UDim.new(0, 10)
                     local switcherStroke = Instance.new("UIStroke", switcher)
                     switcherStroke.Color = Color3.fromRGB(255, 171, 0)
 
                     local State = options.state or false
                     if State then
-                        switcher.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                        local gradient = Instance.new("UIGradient", switcher)
-                        gradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 171, 0)), ColorSequenceKeypoint.new(1, Color3.fromRGB(174, 116, 0))}
+                        switcher.BackgroundColor3 = Color3.fromRGB(255, 171, 0)
                         toggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
                     end
 
@@ -201,15 +212,10 @@ function Library:Window(options)
                         State = not State
                         options.callback(State)
                         if State then
-                            switcher.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                            local gradient = Instance.new("UIGradient", switcher)
-                            gradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 171, 0)), ColorSequenceKeypoint.new(1, Color3.fromRGB(174, 116, 0))}
+                            switcher.BackgroundColor3 = Color3.fromRGB(255, 171, 0)
                             TweenService:Create(toggleLabel, TweenInfo.new(0.06, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
                         else
-                            switcher.BackgroundColor3 = Color3.fromRGB(51, 51, 51)
-                            for _, child in ipairs(switcher:GetChildren()) do
-                                if child:IsA("UIGradient") then child:Destroy() end
-                            end
+                            switcher.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
                             TweenService:Create(toggleLabel, TweenInfo.new(0.06, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
                         end
                     end
@@ -224,30 +230,36 @@ function Library:Window(options)
                             PerformToggle()
                         end
                     end)
-                    Resize(25)
+                    Resize(35)
                 end
 
                 function elements:Slider(options)
                     if not options.text or not options.min or not options.max or not options.callback then Notify("Slider", "Missing arguments!") return end
                     local Slider = Instance.new("Frame", sectionFrame)
-                    Slider.BackgroundTransparency, Slider.Size = 1, UDim2.new(0, 232, 0, 25)
-                    buttoneffect({frame = Slider, entered = Slider})
+                    Slider.BackgroundColor3, Slider.Size = Color3.fromRGB(55, 55, 55), UDim2.new(0, 220, 0, 40)
+                    local sliderCorner = Instance.new("UICorner", Slider)
+                    sliderCorner.CornerRadius = UDim.new(0, 4)
+                    Slider.Position = UDim2.new(0.06, 0, 0, sectionSizeConstraint.MinSize.Y - 5)
 
                     local sliderLabel = Instance.new("TextLabel", Slider)
-                    sliderLabel.BackgroundTransparency, sliderLabel.Position, sliderLabel.Size, sliderLabel.FontFace, sliderLabel.Text, sliderLabel.TextColor3, sliderLabel.TextSize, sliderLabel.TextXAlignment = 1, UDim2.new(0, 0, -3.752, 0), UDim2.new(0, 232, 0, 25), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), " " .. options.text, Color3.fromRGB(200, 200, 200), 18, Enum.TextXAlignment.Left
+                    sliderLabel.BackgroundTransparency, sliderLabel.Position, sliderLabel.Size, sliderLabel.FontFace, sliderLabel.Text, sliderLabel.TextColor3, sliderLabel.TextSize, sliderLabel.TextXAlignment = 1, UDim2.new(0, 10, 0, 0), UDim2.new(0.65, 0, 0.5, 0), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(200, 200, 200), 16, Enum.TextXAlignment.Left
 
                     local sliderFrame = Instance.new("TextButton", Slider)
-                    sliderFrame.BackgroundColor3, sliderFrame.BorderSizePixel, sliderFrame.Position, sliderFrame.Size, sliderFrame.Text, sliderFrame.AutoButtonColor = Color3.fromRGB(81, 81, 81), 0, UDim2.new(0.04182, 0, 0.16284, 0), UDim2.new(0, 232, 0, 5), "", false
+                    sliderFrame.BackgroundColor3, sliderFrame.Position, sliderFrame.Size, sliderFrame.Text, sliderFrame.AutoButtonColor = Color3.fromRGB(45, 45, 45), UDim2.new(0.05, 0, 0.5, 0), UDim2.new(0, 200, 0, 8), "", false
+                    local sliderFrameCorner = Instance.new("UICorner", sliderFrame)
+                    sliderFrameCorner.CornerRadius = UDim.new(0, 4)
                     local sliderStroke = Instance.new("UIStroke", sliderFrame)
                     sliderStroke.Color = Color3.fromRGB(255, 171, 0)
 
                     local sliderFill = Instance.new("Frame", sliderFrame)
-                    sliderFill.BackgroundColor3, sliderFill.BorderSizePixel, sliderFill.Size, sliderFill.Position = Color3.fromRGB(255, 255, 255), 0, UDim2.new(0, 0, 0, 5), UDim2.new(0, 0, 0, 0)
-                    local fillGradient = Instance.new("UIGradient", sliderFill)
-                    fillGradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 171, 0)), ColorSequenceKeypoint.new(1, Color3.fromRGB(174, 116, 0))}
+                    sliderFill.BackgroundColor3, sliderFill.Size, sliderFill.Position = Color3.fromRGB(255, 171, 0), UDim2.new(0, 0, 0, 8), UDim2.new(0, 0, 0, 0)
+                    local fillCorner = Instance.new("UICorner", sliderFill)
+                    fillCorner.CornerRadius = UDim.new(0, 4)
 
                     local sliderTextBox = Instance.new("TextBox", Slider)
-                    sliderTextBox.BackgroundColor3, sliderTextBox.Position, sliderTextBox.Size, sliderTextBox.FontFace, sliderTextBox.Text, sliderTextBox.TextColor3, sliderTextBox.TextSize, sliderTextBox.TextWrapped = Color3.fromRGB(51, 51, 51), UDim2.new(0.85, 0, 0.16284, 0), UDim2.new(0, 31, 0, 15), Font.new("rbxasset://fonts/families/SourceSansPro.json"), tostring(options.min), Color3.fromRGB(255, 255, 255), 11, true
+                    sliderTextBox.BackgroundColor3, sliderTextBox.Position, sliderTextBox.Size, sliderTextBox.FontFace, sliderTextBox.Text, sliderTextBox.TextColor3, sliderTextBox.TextSize, sliderTextBox.TextWrapped = Color3.fromRGB(45, 45, 45), UDim2.new(0.82, 0, 0, 5), UDim2.new(0, 35, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json"), tostring(options.min), Color3.fromRGB(255, 255, 255), 12, true
+                    local textBoxCorner = Instance.new("UICorner", sliderTextBox)
+                    textBoxCorner.CornerRadius = UDim.new(0, 4)
                     local textBoxStroke = Instance.new("UIStroke", sliderTextBox)
                     textBoxStroke.Color = Color3.fromRGB(255, 171, 0)
 
@@ -263,7 +275,7 @@ function Library:Window(options)
                             percentage = math.clamp(snap((MousePos-FramePos)/FrameSize, step), 0, 1)
                             Value = round(((options.max - options.min) * percentage) + options.min, options.float)
                             Value = math.clamp(Value, options.min, options.max)
-                            sliderTextBox.Text, sliderFill.Size = Value, UDim2.new(percentage, 0, 0, 5)
+                            sliderTextBox.Text, sliderFill.Size = Value, UDim2.new(percentage, 0, 0, 8)
                             options.callback(Value)
                         end
                     end)
@@ -279,33 +291,40 @@ function Library:Window(options)
                                 if val > options.max then val, sliderTextBox.Text = options.max, tostring(options.max)
                                 elseif val < options.min then val, sliderTextBox.Text = options.min, tostring(options.min) end
                                 percentage = (val - options.min) / (options.max - options.min)
-                                sliderFill.Size = UDim2.new(percentage, 0, 0, 5)
+                                sliderFill.Size = UDim2.new(percentage, 0, 0, 8)
                                 options.callback(val)
                             end
                         end
                     end)
-                    Resize(30)
+                    Resize(45)
                 end
 
                 function elements:Dropdown(options)
                     if not options.text or not options.default or not options.list or not options.callback then Notify("Dropdown", "Missing arguments!") return end
                     local Dropdown = Instance.new("Frame", sectionFrame)
-                    Dropdown.BackgroundTransparency, Dropdown.Size, Dropdown.ZIndex = 1, UDim2.new(0, 232, 0, 20), 2
-                    buttoneffect({frame = Dropdown, entered = Dropdown})
+                    Dropdown.BackgroundColor3, Dropdown.Size = Color3.fromRGB(55, 55, 55), UDim2.new(0, 220, 0, 30)
+                    local dropdownCorner = Instance.new("UICorner", Dropdown)
+                    dropdownCorner.CornerRadius = UDim.new(0, 4)
+                    Dropdown.Position = UDim2.new(0.06, 0, 0, sectionSizeConstraint.MinSize.Y - 5)
 
                     local dropdownLabel = Instance.new("TextLabel", Dropdown)
-                    dropdownLabel.BackgroundTransparency, dropdownLabel.Size, dropdownLabel.FontFace, dropdownLabel.Text, dropdownLabel.TextColor3, dropdownLabel.TextSize, dropdownLabel.TextXAlignment, dropdownLabel.TextWrapped = 1, UDim2.new(0, 232, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), " " .. options.text, Color3.fromRGB(200, 200, 200), 18, Enum.TextXAlignment.Left, true
+                    dropdownLabel.BackgroundTransparency, dropdownLabel.Size, dropdownLabel.FontFace, dropdownLabel.Text, dropdownLabel.TextColor3, dropdownLabel.TextSize, dropdownLabel.TextXAlignment = 1, UDim2.new(0, 150, 0, 30), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(200, 200, 200), 16, Enum.TextXAlignment.Left
+                    dropdownLabel.Position = UDim2.new(0, 10, 0, 0)
 
-                    local dropdownText = Instance.new("TextLabel", dropdownLabel)
-                    dropdownText.BackgroundColor3, dropdownText.Position, dropdownText.Size, dropdownText.FontFace, dropdownText.Text, dropdownText.TextColor3, dropdownText.TextSize, dropdownText.TextXAlignment, dropdownText.TextWrapped = Color3.fromRGB(51, 51, 51), UDim2.new(0.5, 0, 0, 0), UDim2.new(0, 100, 0, 18), Font.new("rbxasset://fonts/families/SourceSansPro.json"), " " .. options.default, Color3.fromRGB(255, 255, 255), 12, Enum.TextXAlignment.Left, true
+                    local dropdownText = Instance.new("TextLabel", Dropdown)
+                    dropdownText.BackgroundColor3, dropdownText.Position, dropdownText.Size, dropdownText.FontFace, dropdownText.Text, dropdownText.TextColor3, dropdownText.TextSize, dropdownText.TextXAlignment = Color3.fromRGB(45, 45, 45), UDim2.new(0.68, 0, 0.15, 0), UDim2.new(0, 60, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json"), options.default, Color3.fromRGB(255, 255, 255), 12, Enum.TextXAlignment.Center
+                    local dropdownTextCorner = Instance.new("UICorner", dropdownText)
+                    dropdownTextCorner.CornerRadius = UDim.new(0, 4)
                     local dropdownTextStroke = Instance.new("UIStroke", dropdownText)
                     dropdownTextStroke.Color = Color3.fromRGB(255, 171, 0)
 
                     local dropdownArrow = Instance.new("ImageButton", dropdownText)
-                    dropdownArrow.BackgroundTransparency, dropdownArrow.Position, dropdownArrow.Size, dropdownArrow.AutoButtonColor, dropdownArrow.Image, dropdownArrow.ImageColor3 = 1, UDim2.new(0.9, 0, 0.138888866, 0), UDim2.new(0, 11, 0, 13), false, "rbxassetid://8008296380", Color3.fromRGB(255, 171, 0)
+                    dropdownArrow.BackgroundTransparency, dropdownArrow.Position, dropdownArrow.Size, dropdownArrow.AutoButtonColor, dropdownArrow.Image, dropdownArrow.ImageColor3 = 1, UDim2.new(0.75, 0, 0.2, 0), UDim2.new(0, 10, 0, 10), false, "rbxassetid://8008296380", Color3.fromRGB(255, 171, 0)
 
                     local dropdownList = Instance.new("Frame", dropdownText)
-                    dropdownList.BackgroundColor3, dropdownList.Position, dropdownList.Size, dropdownList.ClipsDescendants, dropdownList.BorderSizePixel, dropdownList.ZIndex = Color3.fromRGB(51, 51, 51), UDim2.new(0, 0, 1, 0), UDim2.new(0, 100, 0, 0), true, 0, 10
+                    dropdownList.BackgroundColor3, dropdownList.Position, dropdownList.Size, dropdownList.ClipsDescendants, dropdownList.ZIndex = Color3.fromRGB(45, 45, 45), UDim2.new(0, 0, 1, 5), UDim2.new(0, 60, 0, 0), true, 10
+                    local dropdownListCorner = Instance.new("UICorner", dropdownList)
+                    dropdownListCorner.CornerRadius = UDim.new(0, 4)
                     local dropdownListStroke = Instance.new("UIStroke", dropdownList)
                     dropdownListStroke.Color = Color3.fromRGB(255, 171, 0)
                     local dropdownListLayout = Instance.new("UIListLayout", dropdownList)
@@ -316,36 +335,40 @@ function Library:Window(options)
                         Dropped = not Dropped
                         local tweenInfo = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
                         TweenService:Create(dropdownLabel, tweenInfo, {TextColor3 = Dropped and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)}):Play()
-                        TweenService:Create(dropdownList, tweenInfo, {Size = Dropped and UDim2.new(0, 100, 0, DropYSize) or UDim2.new(0, 100, 0, 0), BorderSizePixel = Dropped and 1 or 0}):Play()
+                        TweenService:Create(dropdownList, tweenInfo, {Size = Dropped and UDim2.new(0, 60, 0, DropYSize) or UDim2.new(0, 60, 0, 0)}):Play()
                     end)
 
                     for _, v in next, options.list do
                         local dropdownBtn = Instance.new("TextButton", dropdownList)
-                        dropdownBtn.BackgroundTransparency, dropdownBtn.BorderSizePixel, dropdownBtn.Size, dropdownBtn.AutoButtonColor, dropdownBtn.FontFace, dropdownBtn.TextColor3, dropdownBtn.TextSize, dropdownBtn.Text, dropdownBtn.ZIndex = 1, 0, UDim2.new(0, 100, 0, 18), false, Font.new("rbxasset://fonts/families/SourceSansPro.json"), Color3.fromRGB(255, 255, 255), 12, v, 15
+                        dropdownBtn.BackgroundTransparency, dropdownBtn.Size, dropdownBtn.AutoButtonColor, dropdownBtn.FontFace, dropdownBtn.TextColor3, dropdownBtn.TextSize, dropdownBtn.Text, dropdownBtn.ZIndex = 1, UDim2.new(0, 60, 0, 20), false, Font.new("rbxasset://fonts/families/SourceSansPro.json"), Color3.fromRGB(255, 255, 255), 12, v, 15
                         clickEffect({button = dropdownBtn, amount = 5})
                         dropdownBtn.MouseButton1Click:Connect(function()
-                            dropdownText.Text = " " .. v
+                            dropdownText.Text = v
                             options.callback(v)
                             Dropped = false
-                            TweenService:Create(dropdownLabel, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextColor3 = Color3.fromRGB(200, 200, 0)}):Play()
-                            TweenService:Create(dropdownList, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 100, 0, 0), BorderSizePixel = 0}):Play()
+                            TweenService:Create(dropdownLabel, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+                            TweenService:Create(dropdownList, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Size = UDim2.new(0, 60, 0, 0)}):Play()
                         end)
-                        DropYSize = DropYSize + 18
+                        DropYSize = DropYSize + 20
                     end
-                    Resize(25)
+                    Resize(35)
                 end
 
                 function elements:Textbox(options)
                     if not options.text or not options.value or not options.callback then Notify("Textbox", "Missing arguments!") return end
                     local Textbox = Instance.new("Frame", sectionFrame)
-                    Textbox.BackgroundTransparency, Textbox.Size = 1, UDim2.new(0, 232, 0, 20)
-                    buttoneffect({frame = Textbox, entered = Textbox})
+                    Textbox.BackgroundColor3, Textbox.Size = Color3.fromRGB(55, 55, 55), UDim2.new(0, 220, 0, 30)
+                    local textboxCorner = Instance.new("UICorner", Textbox)
+                    textboxCorner.CornerRadius = UDim.new(0, 4)
+                    Textbox.Position = UDim2.new(0.06, 0, 0, sectionSizeConstraint.MinSize.Y - 5)
 
                     local textBoxLabel = Instance.new("TextLabel", Textbox)
-                    textBoxLabel.BackgroundTransparency, textBoxLabel.Position, textBoxLabel.Size, textBoxLabel.FontFace, textBoxLabel.Text, textBoxLabel.TextColor3, textBoxLabel.TextSize, textBoxLabel.TextXAlignment = 1, UDim2.new(0, 0, 0, 0), UDim2.new(0, 232, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), "  " .. options.text, Color3.fromRGB(200, 200, 200), 18, Enum.TextXAlignment.Left
+                    textBoxLabel.BackgroundTransparency, textBoxLabel.Position, textBoxLabel.Size, textBoxLabel.FontFace, textBoxLabel.Text, textBoxLabel.TextColor3, textBoxLabel.TextSize, textBoxLabel.TextXAlignment = 1, UDim2.new(0, 10, 0, 0), UDim2.new(0.65, 0, 1, 0), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(200, 200, 200), 16, Enum.TextXAlignment.Left
 
                     local textBox = Instance.new("TextBox", Textbox)
-                    textBox.BackgroundColor3, textBox.Position, textBox.Size, textBox.FontFace, textBox.Text, textBox.TextColor3, textBox.TextSize, textBox.TextWrapped = Color3.fromRGB(51, 51, 51), UDim2.new(0.85, 0, 0, 0), UDim2.new(0, 53, 0, 15), Font.new("rbxasset://fonts/families/SourceSansPro.json"), options.value, Color3.fromRGB(255, 255, 255), 11, true
+                    textBox.BackgroundColor3, textBox.Position, textBox.Size, textBox.FontFace, textBox.Text, textBox.TextColor3, textBox.TextSize, textBox.TextWrapped = Color3.fromRGB(45, 45, 45), UDim2.new(0.82, 0, 0.15, 0), UDim2.new(0, 35, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json"), options.value, Color3.fromRGB(255, 255, 255), 12, true
+                    local textBoxCorner = Instance.new("UICorner", textBox)
+                    textBoxCorner.CornerRadius = UDim.new(0, 4)
                     local textBoxStroke = Instance.new("UIStroke", textBox)
                     textBoxStroke.Color = Color3.fromRGB(255, 171, 0)
 
@@ -356,47 +379,57 @@ function Library:Window(options)
                         TweenService:Create(textBoxLabel, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
                         if Enter and textBox.Text ~= "" then options.callback(textBox.Text) end
                     end)
-                    Resize(25)
+                    Resize(35)
                 end
 
                 function elements:Colorpicker(options)
                     if not options.text or not options.color or not options.callback then Notify("Colorpicker", "Missing arguments!") return end
                     local hue, sat, val = Color3.toHSV(options.color)
                     local Colorpicker = Instance.new("Frame", sectionFrame)
-                    Colorpicker.BackgroundTransparency, Colorpicker.Size, Colorpicker.ZIndex = 1, UDim2.new(0, 232, 0, 20), 2
-                    buttoneffect({frame = Colorpicker, entered = Colorpicker})
+                    Colorpicker.BackgroundColor3, Colorpicker.Size = Color3.fromRGB(55, 55, 55), UDim2.new(0, 220, 0, 30)
+                    local colorpickerCorner = Instance.new("UICorner", Colorpicker)
+                    colorpickerCorner.CornerRadius = UDim.new(0, 4)
+                    Colorpicker.Position = UDim2.new(0.06, 0, 0, sectionSizeConstraint.MinSize.Y - 5)
 
                     local colorpickerLabel = Instance.new("TextLabel", Colorpicker)
-                    colorpickerLabel.BackgroundTransparency, colorpickerLabel.Position, colorpickerLabel.Size, colorpickerLabel.FontFace, colorpickerLabel.Text, colorpickerLabel.TextColor3, colorpickerLabel.TextSize, colorpickerLabel.TextXAlignment = 1, UDim2.new(0, 0, 0, 0), UDim2.new(0, 232, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), " " .. options.text, Color3.fromRGB(200, 200, 200), 18, Enum.TextXAlignment.Left
+                    colorpickerLabel.BackgroundTransparency, colorpickerLabel.Position, colorpickerLabel.Size, colorpickerLabel.FontFace, colorpickerLabel.Text, colorpickerLabel.TextColor3, colorpickerLabel.TextSize, colorpickerLabel.TextXAlignment = 1, UDim2.new(0, 10, 0, 0), UDim2.new(0.65, 0, 1, 0), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(200, 200, 200), 16, Enum.TextXAlignment.Left
 
-                    local colorpickerButton = Instance.new("ImageButton", colorpickerLabel)
-                    colorpickerButton.BackgroundTransparency, colorpickerButton.Position, colorpickerButton.Size, colorpickerButton.Image = 1, UDim2.new(0.92, 0, 0.57, 0), UDim2.new(0, 15, 0, 15), "rbxassetid://8023491332"
+                    local colorpickerButton = Instance.new("ImageButton", Colorpicker)
+                    colorpickerButton.BackgroundColor3, colorpickerButton.Position, colorpickerButton.Size, colorpickerButton.Image = Color3.fromRGB(45, 45, 45), UDim2.new(0.85, 0, 0.15, 0), UDim2.new(0, 20, 0, 20), "rbxassetid://8023491332"
+                    local colorpickerButtonCorner = Instance.new("UICorner", colorpickerButton)
+                    colorpickerButtonCorner.CornerRadius = UDim.new(0, 4)
 
                     local colorpickerFrame = Instance.new("Frame", Colorpicker)
-                    colorpickerFrame.Visible, colorpickerFrame.BackgroundColor3, colorpickerFrame.Position, colorpickerFrame.Size, colorpickerFrame.ZIndex = false, Color3.fromRGB(51, 51, 51), UDim2.new(1.15, 0, 0.5, 0), UDim2.new(0, 251, 0, 221), 15
+                    colorpickerFrame.Visible, colorpickerFrame.BackgroundColor3, colorpickerFrame.Position, colorpickerFrame.Size, colorpickerFrame.ZIndex = false, Color3.fromRGB(40, 40, 40), UDim2.new(0, -240, 1, 5), UDim2.new(0, 230, 0, 200), 15
+                    local colorpickerFrameCorner = Instance.new("UICorner", colorpickerFrame)
+                    colorpickerFrameCorner.CornerRadius = UDim.new(0, 6)
                     local colorpickerStroke = Instance.new("UIStroke", colorpickerFrame)
                     colorpickerStroke.Color = Color3.fromRGB(255, 171, 0)
                     Dragify(colorpickerFrame, Colorpicker)
 
                     local RGB = Instance.new("ImageButton", colorpickerFrame)
-                    RGB.BackgroundTransparency, RGB.Position, RGB.Size, RGB.AutoButtonColor, RGB.Image, RGB.ZIndex = 1, UDim2.new(0.067, 0, 0.068, 0), UDim2.new(0, 179, 0, 161), false, "rbxassetid://6523286724", 16
+                    RGB.BackgroundTransparency, RGB.Position, RGB.Size, RGB.AutoButtonColor, RGB.Image, RGB.ZIndex = 1, UDim2.new(0.05, 0, 0.05, 0), UDim2.new(0, 160, 0, 140), false, "rbxassetid://6523286724", 16
 
                     local RGBCircle = Instance.new("ImageLabel", RGB)
-                    RGBCircle.BackgroundTransparency, RGBCircle.Size, RGBCircle.Image, RGBCircle.ImageRectOffset, RGBCircle.ImageRectSize, RGBCircle.ZIndex = 1, UDim2.new(0, 14, 0, 14), "rbxassetid://3926309567", Vector2.new(628, 420), Vector2.new(48, 48), 16
+                    RGBCircle.BackgroundTransparency, RGBCircle.Size, RGBCircle.Image, RGBCircle.ImageRectOffset, RGBCircle.ImageRectSize, RGBCircle.ZIndex = 1, UDim2.new(0, 12, 0, 12), "rbxassetid://3926309567", Vector2.new(628, 420), Vector2.new(48, 48), 16
 
                     local Darkness = Instance.new("ImageButton", colorpickerFrame)
-                    Darkness.BackgroundTransparency, Darkness.Position, Darkness.Size, Darkness.AutoButtonColor, Darkness.Image, Darkness.ZIndex = 1, UDim2.new(0.831940293, 0, 0.068, 0), UDim2.new(0, 33, 0, 161), false, "rbxassetid://156579757", 16
+                    Darkness.BackgroundTransparency, Darkness.Position, Darkness.Size, Darkness.AutoButtonColor, Darkness.Image, Darkness.ZIndex = 1, UDim2.new(0.77, 0, 0.05, 0), UDim2.new(0, 30, 0, 140), false, "rbxassetid://156579757", 16
 
                     local DarknessCircle = Instance.new("Frame", Darkness)
-                    DarknessCircle.Position, DarknessCircle.Size, DarknessCircle.ZIndex = UDim2.new(0, 0, 0, 0), UDim2.new(0, 33, 0, 5), 16
+                    DarknessCircle.Position, DarknessCircle.Size, DarknessCircle.ZIndex = UDim2.new(0, 0, 0, 0), UDim2.new(0, 30, 0, 5), 16
 
                     local colorHex = Instance.new("TextLabel", colorpickerFrame)
-                    colorHex.BackgroundColor3, colorHex.Position, colorHex.Size, colorHex.FontFace, colorHex.Text, colorHex.TextColor3, colorHex.TextSize, colorHex.ZIndex = Color3.fromRGB(51, 51, 51), UDim2.new(0.0717131495, 0, 0.850678742, 0), UDim2.new(0, 94, 0, 24), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), "#FFFFFF", Color3.fromRGB(255, 255, 255), 14, 16
+                    colorHex.BackgroundColor3, colorHex.Position, colorHex.Size, colorHex.FontFace, colorHex.Text, colorHex.TextColor3, colorHex.TextSize, colorHex.ZIndex = Color3.fromRGB(45, 45, 45), UDim2.new(0.05, 0, 0.8, 0), UDim2.new(0, 90, 0, 25), Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), "#FFFFFF", Color3.fromRGB(255, 255, 255), 14, 16
+                    local colorHexCorner = Instance.new("UICorner", colorHex)
+                    colorHexCorner.CornerRadius = UDim.new(0, 4)
                     local colorHexStroke = Instance.new("UIStroke", colorHex)
                     colorHexStroke.Color = Color3.fromRGB(255, 171, 0)
 
                     local Copy = Instance.new("TextButton", colorpickerFrame)
-                    Copy.BackgroundColor3, Copy.Position, Copy.Size, Copy.AutoButtonColor, Copy.FontFace, Copy.Text, Copy.TextColor3, Copy.TextSize, Copy.ZIndex = Color3.fromRGB(51, 51, 51), UDim2.new(0.72111553, 0, 0.850678742, 0), UDim2.new(0, 60, 0, 24), false, Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), "Copy", Color3.fromRGB(255, 255, 255), 14, 16
+                    Copy.BackgroundColor3, Copy.Position, Copy.Size, Copy.AutoButtonColor, Copy.FontFace, Copy.Text, Copy.TextColor3, Copy.TextSize, Copy.ZIndex = Color3.fromRGB(45, 45, 45), UDim2.new(0.55, 0, 0.8, 0), UDim2.new(0, 60, 0, 25), false, Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), "Copy", Color3.fromRGB(255, 255, 255), 14, 16
+                    local copyCorner = Instance.new("UICorner", Copy)
+                    copyCorner.CornerRadius = UDim.new(0, 4)
                     local copyStroke = Instance.new("UIStroke", Copy)
                     copyStroke.Color = Color3.fromRGB(255, 171, 0)
                     Copy.MouseButton1Click:Connect(function()
@@ -456,7 +489,7 @@ function Library:Window(options)
                         colorHex.Text, DarknessCircle.BackgroundColor3 = to_hex(realcolor), realcolor
                     end
                     setcolor({hue, sat, val})
-                    Resize(25)
+                    Resize(35)
                 end
 
                 function elements:Keybind(options)
@@ -466,17 +499,19 @@ function Library:Window(options)
                     local oldKey = options.default.Name
 
                     local Keybind = Instance.new("Frame", sectionFrame)
-                    Keybind.BackgroundTransparency, Keybind.Size, Keybind.ZIndex = 1, UDim2.new(0, 232, 0, 20), 2
-                    buttoneffect({frame = Keybind, entered = Keybind})
+                    Keybind.BackgroundColor3, Keybind.Size = Color3.fromRGB(55, 55, 55), UDim2.new(0, 220, 0, 30)
+                    local keybindCorner = Instance.new("UICorner", Keybind)
+                    keybindCorner.CornerRadius = UDim.new(0, 4)
+                    Keybind.Position = UDim2.new(0.06, 0, 0, sectionSizeConstraint.MinSize.Y - 5)
 
                     local keybindButton = Instance.new("TextButton", Keybind)
-                    keybindButton.BackgroundTransparency, keybindButton.Position, keybindButton.Size, keybindButton.AutoButtonColor, keybindButton.FontFace, keybindButton.Text, keybindButton.TextColor3, keybindButton.TextSize, keybindButton.TextXAlignment = 1, UDim2.new(0, 0, 0, 0), UDim2.new(0, 232, 0, 20), false, Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), " " .. options.text, Color3.fromRGB(200, 200, 200), 18, Enum.TextXAlignment.Left
+                    keybindButton.BackgroundTransparency, keybindButton.Position, keybindButton.Size, keybindButton.AutoButtonColor, keybindButton.FontFace, keybindButton.Text, keybindButton.TextColor3, keybindButton.TextSize, keybindButton.TextXAlignment = 1, UDim2.new(0, 10, 0, 0), UDim2.new(0.65, 0, 1, 0), false, Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold), options.text, Color3.fromRGB(200, 200, 200), 16, Enum.TextXAlignment.Left
 
-                    local keybindLabel = Instance.new("TextLabel", keybindButton)
-                    keybindLabel.BackgroundTransparency, keybindLabel.Position, keybindLabel.Size, keybindLabel.FontFace, keybindLabel.Text, keybindLabel.TextColor3, keybindLabel.TextSize, keybindLabel.TextXAlignment = 1, UDim2.new(0.91, 0, 0, 0), UDim2.new(0, 36, 0, 20), Font.new("rbxasset://fonts/families/SourceSansPro.json"), (short[oldKey] or oldKey) .. " ", Color3.fromRGB(200, 200, 200), 18, Enum.TextXAlignment.Right
+                    local keybindLabel = Instance.new("TextLabel", Keybind)
+                    keybindLabel.BackgroundTransparency, keybindLabel.Position, keybindLabel.Size, keybindLabel.FontFace, keybindLabel.Text, keybindLabel.TextColor3, keybindLabel.TextSize, keybindLabel.TextXAlignment = 1, UDim2.new(0.82, 0, 0, 0), UDim2.new(0, 35, 0, 30), Font.new("rbxasset://fonts/families/SourceSansPro.json"), (short[oldKey] or oldKey), Color3.fromRGB(200, 200, 200), 16, Enum.TextXAlignment.Right
 
                     keybindButton.MouseButton1Click:Connect(function()
-                        keybindLabel.Text = "... "
+                        keybindLabel.Text = "..."
                         TweenService:Create(keybindButton, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
                         TweenService:Create(keybindLabel, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
                         local input = InputService.InputBegan:Wait()
@@ -484,17 +519,17 @@ function Library:Window(options)
                         TweenService:Create(keybindLabel, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
                         TweenService:Create(keybindButton, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
                         if not blacklisted[newKey] then
-                            keybindLabel.Text = (short[newKey] or newKey) .. " "
+                            keybindLabel.Text = (short[newKey] or newKey)
                             oldKey = newKey
                         else
-                            keybindLabel.Text = (short[oldKey] or oldKey) .. " "
+                            keybindLabel.Text = (short[oldKey] or oldKey)
                         end
                     end)
 
                     InputService.InputBegan:Connect(function(key, focused)
                         if not focused and key.KeyCode.Name == oldKey then options.callback(oldKey) end
                     end)
-                    Resize(25)
+                    Resize(35)
                 end
 
                 return elements
