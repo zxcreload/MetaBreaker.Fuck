@@ -91,11 +91,13 @@ function Library:Window(options)
     local SideBar = Instance.new("Frame", Body)
     SideBar.BackgroundColor3, SideBar.BorderSizePixel, SideBar.Size = Color3.fromRGB(26, 36, 48), 0, UDim2.new(0, 187, 0, 516)
     Instance.new("UICorner", SideBar).CornerRadius = UDim.new(0, 4)
-    Instance.new("Frame", SideBar).BackgroundColor3, Instance.new("Frame", SideBar).BorderSizePixel, Instance.new("Frame", SideBar).Position, Instance.new("Frame", SideBar).Size = Color3.fromRGB(15, 23, 36), 0, UDim2.new(0.99490571, 0, 0, 0), UDim2.new(0, 3, 0, 516)
+    local sidebarFrame = Instance.new("Frame", SideBar)
+    sidebarFrame.BackgroundColor3, sidebarFrame.BorderSizePixel, sidebarFrame.Position, sidebarFrame.Size = Color3.fromRGB(15, 23, 36), 0, UDim2.new(0.99490571, 0, 0, 0), UDim2.new(0, 3, 0, 516)
     
     local TopBar = Instance.new("Frame", Body)
     TopBar.BackgroundColor3, TopBar.BackgroundTransparency, TopBar.BorderSizePixel, TopBar.Position, TopBar.Size = Color3.fromRGB(9, 8, 13), 1, 0, UDim2.new(0.25166446, 0, 0, 0), UDim2.new(0, 562, 0, 49)
-    Instance.new("Frame", TopBar).BackgroundColor3, Instance.new("Frame", TopBar).BorderSizePixel, Instance.new("Frame", TopBar).Position, Instance.new("Frame", TopBar).Size = Color3.fromRGB(15, 23, 36), 0, UDim2.new(0.0400355868, 0, 1, 0), UDim2.new(0, 469, 0, 3)
+    local topBarFrame = Instance.new("Frame", TopBar)
+    topBarFrame.BackgroundColor3, topBarFrame.BorderSizePixel, topBarFrame.Position, topBarFrame.Size = Color3.fromRGB(15, 23, 36), 0, UDim2.new(0.0400355868, 0, 1, 0), UDim2.new(0, 469, 0, 3)
     
     local Title = Instance.new("TextLabel", SideBar)
     Title.BackgroundTransparency, Title.BorderSizePixel, Title.Position, Title.Size, Title.Font, Title.Text, Title.TextColor3, Title.TextSize, Title.TextWrapped = 1, 0, UDim2.new(0.0614973232, 0, 0.0213178284, 0), UDim2.new(0, 162, 0, 26), Enum.Font.ArialBold, options.text, Color3.fromRGB(234, 239, 245), 28, true
@@ -112,7 +114,9 @@ function Library:Window(options)
         options.text = options.text or "Tab Section"
         local tabSection = Instance.new("Frame", tabContainer)
         tabSection.BackgroundTransparency, tabSection.BorderSizePixel, tabSection.Size = 1, 0, UDim2.new(0, 189, 0, 22)
-        Instance.new("UIListLayout", tabContainer)
+        
+        local containerLayout = Instance.new("UIListLayout", tabContainer)
+        containerLayout.SortOrder = Enum.SortOrder.LayoutOrder
         
         local tabSectionLabel = Instance.new("TextLabel", tabSection)
         tabSectionLabel.BackgroundTransparency, tabSectionLabel.BorderSizePixel, tabSectionLabel.Size, tabSectionLabel.Font, tabSectionLabel.Text, tabSectionLabel.TextColor3, tabSectionLabel.TextSize, tabSectionLabel.TextXAlignment = 1, 0, UDim2.new(0, 190, 0, 22), Enum.Font.Gotham, "     " .. options.text, Color3.fromRGB(79, 107, 126), 17, Enum.TextXAlignment.Left
@@ -143,7 +147,9 @@ function Library:Window(options)
             end)
             
             tabButton.MouseButton1Click:Connect(function()
-                for _, v in next, allPages:GetChildren() do v.Visible = false end
+                for _, v in next, allPages:GetChildren() do 
+                    v.Visible = false 
+                end
                 newPage.Visible = true
                 for _, v in next, SideBar:GetDescendants() do
                     if v:IsA("TextButton") then
@@ -295,7 +301,8 @@ function Library:Window(options)
                     
                     local dropdownList = Instance.new("Frame", dropdownText)
                     dropdownList.BackgroundColor3, dropdownList.Position, dropdownList.Size, dropdownList.ClipsDescendants, dropdownList.BorderSizePixel, dropdownList.ZIndex = Color3.fromRGB(2, 5, 12), UDim2.new(0, 0, 1, 0), UDim2.new(0, 87, 0, 0), true, 0, 10
-                    Instance.new("UIListLayout", dropdownList).SortOrder = Enum.SortOrder.LayoutOrder
+                    local dropdownListLayout = Instance.new("UIListLayout", dropdownList)
+                    dropdownListLayout.SortOrder = Enum.SortOrder.LayoutOrder
                     
                     local DropYSize, Dropped = 0, false
                     dropdownArrow.MouseButton1Click:Connect(function()
@@ -309,7 +316,10 @@ function Library:Window(options)
                         local dropdownBtn = Instance.new("TextButton", dropdownList)
                         dropdownBtn.BackgroundTransparency, dropdownBtn.BorderSizePixel, dropdownBtn.Size, dropdownBtn.AutoButtonColor, dropdownBtn.Font, dropdownBtn.TextColor3, dropdownBtn.TextSize, dropdownBtn.Text, dropdownBtn.ZIndex = 1, 0, UDim2.new(0, 87, 0, 18), false, Enum.Font.Gotham, Color3.fromRGB(234, 239, 245), 12, v, 15
                         clickEffect({button = dropdownBtn, amount = 5})
-                        dropdownBtn.MouseButton1Click:Connect(function() dropdownText.Text, options.callback(v) = " " .. v end)
+                        dropdownBtn.MouseButton1Click:Connect(function()
+                            dropdownText.Text = " " .. v
+                            options.callback(v)
+                        end)
                         DropYSize = DropYSize + 18
                     end
                     Resize(25)
@@ -479,4 +489,3 @@ function Library:Window(options)
 end
 
 return Library
-
