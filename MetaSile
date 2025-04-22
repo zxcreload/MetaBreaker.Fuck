@@ -15,12 +15,40 @@ end
 --[[ Настройки Silent Aim ]]
 getgenv().SilentAim = {
     Enabled = true,
-    Prediction = 0.165,
-    TargetPart = {"Head", "HumanoidRootPart"},
+    Prediction = 0.141123123,
+    TargetParts = {
+        "HumanoidRootPart",
+        "UpperTorso",
+        "LowerTorso",
+        "Head",
+        "LeftUpperArm",
+        "RightUpperArm",
+        "LeftLowerArm",
+        "RightLowerArm",
+        "LeftUpperLeg",
+        "RightUpperLeg",
+        "LeftLowerLeg",
+        "RightLowerLeg",
+        "UpperLegs",
+        "LowerLegs",
+        "Legs"
+    },
+    JumpAimPart = "Upperlegs",
     VisibleCheck = true,
     HitChance = 100,
     Keybind = Enum.KeyCode.E,
-    IgnoreRagdoll = true
+    IgnoreRagdoll = true,
+    IgnoreGrabbed = true,
+    WallCheck = true,
+    
+    -- Новые настройки
+    TargetSelectionMode = "Keybind", -- "Keybind" или "Auto"
+    Whitelist = { -- Список игроков или части ников
+        "ExamplePlayer",
+        "Friend",
+        "Admin"
+    },
+    WhitelistEnabled = false -- Включить вайтлист
 }
 
 --[[ Сервисы ]]
@@ -84,6 +112,51 @@ local function IsPartVisible(part, char)
     return false
 end
 
+--[[ Проверка вайтлиста ]]
+local function IsWhitelisted(player)
+    if not SilentAim.WhitelistEnabled then return true end
+    
+    for _, namePart in ipairs(SilentAim.Whitelist) do
+        if string.find(player.Name:lower(), namePart:lower(), 1, true) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+--[[ Получение виртуальной части для комбинированных ног ]]
+local function GetCombinedPart(char, partType)
+    local leftPart, rightPart
+    
+    if partType == "UpperLegs" then
+        leftPart = char:FindFirstChild("LeftUpperLeg")
+        rightPart = char:FindFirstChild("RightUpperLeg")
+    elseif partType == "LowerLegs" then
+        leftPart = char:FindFirstChild("LeftLowerLeg")
+        rightPart = char:FindFirstChild("RightLowerLeg")
+    elseif partType == "Legs" then
+        leftPart = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("LeftLowerLeg")
+        rightPart = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("RightLowerLeg")
+    end
+    
+    if not leftPart or not rightPart then return nil end
+    
+    local combinedPart = Instance.new("Part")
+    combinedPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    combinedPart.Transparency = 1
+    combinedPart.CanCollide = false
+    combinedPart.Anchored = true
+    
+    local position = (leftPart.Position + rightPart.Position) / 2
+    local velocity = (leftPart.Velocity + rightPart.Velocity) / 2
+    
+    combinedPart.Position = position
+    combinedPart.Velocity = velocity
+    
+    return combinedPart
+end
+
 --[[ Проверка состояния цели ]]
 local function Check()
     local sel = SilentAim
@@ -92,30 +165,57 @@ local function Check()
     local char = sel.Selected.Character
     if not char then return false end
 
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        sel.Selected = nil
+        sel.SelectedPart = nil
+        return false
+    end
+
     local ko = char:WaitForChild("BodyEffects"):FindFirstChild("K.O").Value
     local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
 
-    if sel.IgnoreRagdoll then
-        return not grabbed
-    else
-        return not (ko or grabbed)
-    end
+    if sel.IgnoreRagdoll and ko then return false end
+    if sel.IgnoreGrabbed and grabbed then return false end
+
+    return true
 end
 
---[[ Получение ближайшей части тела ]]
+--[[ Получение ближайшей видимой части тела ]]
 local function ClosestPart(char)
-    local closest, shortest = nil, math.huge
-    for _, partName in ipairs(SilentAim.TargetPart) do
-        local part = char:FindFirstChild(partName)
-        if part then
-            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-            local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
-            if dist < shortest then
-                closest, shortest = part, dist
+    local humanoid = char:FindFirstChild("Humanoid")
+    local isJumping = humanoid and humanoid:GetState() == Enum.HumanoidStateType.Jumping
+
+    if isJumping and SilentAim.JumpAimPart then
+        local jumpPart = char:FindFirstChild(SilentAim.JumpAimPart)
+        if not jumpPart and (SilentAim.JumpAimPart == "UpperLegs" or SilentAim.JumpAimPart == "LowerLegs" or SilentAim.JumpAimPart == "Legs") then
+            jumpPart = GetCombinedPart(char, SilentAim.JumpAimPart)
+        end
+        
+        if jumpPart and (not SilentAim.WallCheck or IsPartVisible(jumpPart, char)) then
+            local _, onScreen = Camera:WorldToViewportPoint(jumpPart.Position)
+            if onScreen then
+                return jumpPart
             end
         end
     end
-    return closest
+
+    for _, partName in ipairs(SilentAim.TargetParts) do
+        local part = char:FindFirstChild(partName)
+        if not part and (partName == "UpperLegs" or partName == "LowerLegs" or partName == "Legs") then
+            part = GetCombinedPart(char, partName)
+        end
+        
+        if part then
+            local isVisible = not SilentAim.WallCheck or IsPartVisible(part, char)
+            local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if isVisible and onScreen then
+                return part
+            end
+        end
+    end
+
+    return nil
 end
 
 --[[ Получение ближайшего игрока ]]
@@ -130,7 +230,8 @@ local function GetClosest()
     local targetPart = nil
 
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == LocalPlayer then continue end
+        if plr == LocalPlayer or not IsWhitelisted(plr) then continue end
+        
         local char = plr.Character
         if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
             local part = ClosestPart(char)
@@ -161,27 +262,43 @@ local function UpdateTracer()
 
     local lHead = lChar:FindFirstChild("Head")
     local tChar = SilentAim.Selected.Character
-    local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+    local tPart = SilentAim.SelectedPart
 
-    if lHead and tRoot then
+    if lHead and tPart then
         StartAttachment.Parent = lHead
-        EndAttachment.Parent = tRoot
+        EndAttachment.Parent = tPart
         StartAttachment.WorldPosition = lHead.Position
-        EndAttachment.WorldPosition = tRoot.Position + (tRoot.Velocity * SilentAim.Prediction)
+        EndAttachment.WorldPosition = tPart.Position + (tPart.Velocity * SilentAim.Prediction)
         Beam.Enabled = true
     end
 end
 
---[[ Выбор цели по клавише ]]
+--[[ Выбор цели по клавише или автоматически ]]
+local function UpdateTargetSelection()
+    if SilentAim.TargetSelectionMode == "Auto" then
+        GetClosest()
+    end
+end
+
+--[[ Обработка ввода ]]
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if input.KeyCode == SilentAim.Keybind then
+    
+    if input.KeyCode == SilentAim.Keybind and SilentAim.TargetSelectionMode == "Keybind" then
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.Selected = LocalPlayer
             SilentAim.SelectedPart = nil
         else
             GetClosest()
         end
+    end
+end)
+
+--[[ Сброс цели при смерти ]]
+Players.PlayerRemoving:Connect(function(player)
+    if SilentAim.Selected == player then
+        SilentAim.Selected = nil
+        SilentAim.SelectedPart = nil
     end
 end)
 
@@ -198,8 +315,11 @@ __index = hookmetamethod(game, "__index", function(t, k)
     return __index(t, k)
 end)
 
---[[ Heartbeat обновление Beam ]]
-RunService.Heartbeat:Connect(UpdateTracer)
+--[[ Heartbeat обновление Beam и цели (в авторежиме) ]]
+RunService.Heartbeat:Connect(function()
+    UpdateTracer()
+    UpdateTargetSelection()
+end)
 
 --[[ Очистка при выходе ]]
 game:BindToClose(function()
