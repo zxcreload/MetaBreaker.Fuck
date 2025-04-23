@@ -125,11 +125,10 @@ local Indicators = {
     Damage = {}
 }
 
-local function CreateIndicator(name, text, offsetY)
+local function CreateIndicator(name, text, offsetY, animate)
     local frame = Instance.new("Frame")
     frame.Name = name
     frame.Size = UDim2.new(0, 200, 0, 20)
-    frame.Position = UDim2.new(0.5, -100, 0.5, offsetY)
     frame.BackgroundTransparency = 1
     frame.Parent = ScreenGui
 
@@ -145,35 +144,46 @@ local function CreateIndicator(name, text, offsetY)
     label.Parent = frame
 
     local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new(SilentAim.GradientColors.Start) -- Устанавливаем статический градиент
+    gradient.Color = ColorSequence.new(SilentAim.GradientColors.Start)
     gradient.Parent = label
 
-    return frame
+    if animate then
+        frame.Position = UDim2.new(0.5, -300, 0.5, offsetY)
+        local targetPosition = UDim2.new(0.5, -100, 0.5, offsetY)
+        local tweenInfo = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+        local tween = TweenService:Create(frame, tweenInfo, {Position = targetPosition})
+        tween:Play()
+    else
+        frame.Position = UDim2.new(0.5, -100, 0.5, offsetY)
+    end
+
+    return frame, label
 end
 
 local function ShowDamageIndicator(targetName, damage, remainingHP)
-    -- Создаем новый индикатор
     local text = string.format("hit %s %d (%d)", targetName, damage, remainingHP)
-    local offsetY = 30 -- Начальная позиция для первого hit индикатора (ниже Distance)
-    local dmgIndicator = CreateIndicator("Damage_" .. tostring(tick()), text, offsetY)
-    table.insert(Indicators.Damage, 1, dmgIndicator) -- Вставляем в начало списка
+    local offsetY = 130 + (#Indicators.Damage * 10)
+    local dmgIndicator, dmgLabel = CreateIndicator("Damage_" .. tostring(tick()), text, offsetY, true)
+    table.insert(Indicators.Damage, dmgIndicator)
 
-    -- Ограничиваем количество индикаторов
     if #Indicators.Damage > SilentAim.MaxDamageIndicators then
-        local oldestIndicator = table.remove(Indicators.Damage, #Indicators.Damage) -- Удаляем самый старый
+        local oldestIndicator = table.remove(Indicators.Damage, 1)
         if oldestIndicator then
             oldestIndicator:Destroy()
         end
     end
 
-    -- Обновляем позиции всех hit индикаторов
     for i, indicator in ipairs(Indicators.Damage) do
-        indicator.Position = UDim2.new(0.5, -100, 0.5, 30 + ((i - 1) * 20))
+        indicator.Position = UDim2.new(0.5, -100, 0.5, 130 + ((i - 1) * 10))
     end
 
-    -- Удаляем индикатор после заданного времени
     task.spawn(function()
-        task.wait(SilentAim.DamageIndicatorDuration)
+        task.wait(SilentAim.DamageIndicatorDuration - 0.5)
+        local fadeInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+        local fadeTween = TweenService:Create(dmgLabel, fadeInfo, {TextTransparency = 1, TextStrokeTransparency = 1})
+        fadeTween:Play()
+        fadeTween.Completed:Wait()
+
         for i, v in ipairs(Indicators.Damage) do
             if v == dmgIndicator then
                 table.remove(Indicators.Damage, i)
@@ -181,17 +191,17 @@ local function ShowDamageIndicator(targetName, damage, remainingHP)
                 break
             end
         end
-        -- Обновляем позиции оставшихся индикаторов
+
         for i, indicator in ipairs(Indicators.Damage) do
-            indicator.Position = UDim2.new(0.5, -100, 0.5, 30 + ((i - 1) * 20))
+            indicator.Position = UDim2.new(0.5, -100, 0.5, 130 + ((i - 1) * 10))
         end
     end)
 end
 
 local function InitIndicators()
-    Indicators.TargetHP = CreateIndicator("TargetHP", "Target HP: N/A", -40) -- Друг под другом
-    Indicators.LocalHP = CreateIndicator("LocalHP", "Local HP: N/A", -20)
-    Indicators.Distance = CreateIndicator("Distance", "Distance: N/A", 0)
+    Indicators.TargetHP = CreateIndicator("TargetHP", "Target HP: N/A", 100, false)
+    Indicators.LocalHP = CreateIndicator("LocalHP", "Local HP: N/A", 110, false)
+    Indicators.Distance = CreateIndicator("Distance", "Distance: N/A", 120, false)
 end
 
 if SilentAim.IndicatorEnabled then
@@ -200,47 +210,47 @@ end
 
 --[[ Методы Resolver ]]
 local function getPredictedPosition(targetPlayer)
-    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
-        local aimPart = SilentAim.SelectedPart or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if not aimPart then
-            warn("[DEBUG] No aimPart found for targetPlayer")
-            return nil
-        end
-        
-        local aimPartPos = aimPart.Position
-        
-        if not lastPosition or not lastUpdateTime then
-            lastPosition = aimPartPos
-            lastUpdateTime = tick()
-            return aimPartPos
-        end
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
+        return nil
+    end
 
-        local currentTime = tick()
-        local deltaTime = currentTime - lastUpdateTime
-        
-        if SilentAim.ResolverMode == "Velocity" then
-            local velocity = aimPart.Velocity
-            return aimPartPos + Vector3.new(velocity.X * SilentAim.PredictionXZ, velocity.Y * SilentAim.PredictionY, velocity.Z * SilentAim.PredictionXZ)
-        elseif SilentAim.ResolverMode == "MoveDirection" then
-            return aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (SilentAim.PredictionXZ * 10))
-        elseif SilentAim.ResolverMode == "CalculateCFrame" then
-            if (aimPartPos - lastPosition).Magnitude < 0.001 then
-                return aimPartPos 
-            else
-                local distance = (aimPartPos - lastPosition).Magnitude
-                local predictedDistance = (distance / deltaTime) * (0.1 * (SilentAim.PredictionXZ * 10))
-                local predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
-                
-                local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * SilentAim.PredictionY)
-                predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
-                
-                lastUpdateTime = currentTime
-                lastPosition = aimPartPos
-                return predictedPosition
-            end
+    local aimPart = SilentAim.SelectedPart or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not aimPart then
+        return nil
+    end
+    
+    local aimPartPos = aimPart.Position
+    
+    if not lastPosition or not lastUpdateTime then
+        lastPosition = aimPartPos
+        lastUpdateTime = tick()
+        return aimPartPos
+    end
+
+    local currentTime = tick()
+    local deltaTime = currentTime - lastUpdateTime
+    
+    if SilentAim.ResolverMode == "Velocity" then
+        local velocity = aimPart.Velocity
+        return aimPartPos + Vector3.new(velocity.X * SilentAim.PredictionXZ, velocity.Y * SilentAim.PredictionY, velocity.Z * SilentAim.PredictionXZ)
+    elseif SilentAim.ResolverMode == "MoveDirection" then
+        return aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (SilentAim.PredictionXZ * 10))
+    elseif SilentAim.ResolverMode == "CalculateCFrame" then
+        if (aimPartPos - lastPosition).Magnitude < 0.001 then
+            return aimPartPos 
+        else
+            local distance = (aimPartPos - lastPosition).Magnitude
+            local predictedDistance = (distance / deltaTime) * (0.1 * (SilentAim.PredictionXZ * 10))
+            local predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
+            
+            local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * SilentAim.PredictionY)
+            predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
+            
+            lastUpdateTime = currentTime
+            lastPosition = aimPartPos
+            return predictedPosition
         end
     end
-    warn("[DEBUG] getPredictedPosition returned nil: No targetPlayer or Character/Humanoid")
     return nil
 end
 
@@ -251,6 +261,10 @@ end
 
 --[[ Проверка видимости ]]
 local function IsPartVisible(part, char)
+    if not part or not char then
+        return false
+    end
+
     local origin = Camera.CFrame.Position
     local _, onScreen = Camera:WorldToViewportPoint(part.Position)
 
@@ -280,6 +294,10 @@ end
 
 --[[ Получение виртуальной части для комбинированных ног ]]
 local function GetCombinedPart(char, partType)
+    if not char then
+        return nil
+    end
+
     local leftPart, rightPart
     
     if partType == "UpperLegs" then
@@ -294,7 +312,6 @@ local function GetCombinedPart(char, partType)
     end
     
     if not leftPart or not rightPart then
-        warn("[DEBUG] GetCombinedPart failed: Missing left or right part for " .. partType)
         return nil
     end
     
@@ -317,13 +334,11 @@ end
 local function Check()
     local sel = SilentAim
     if not (sel.Enabled and sel.Selected and sel.SelectedPart and sel.Selected ~= LocalPlayer) then
-        warn("[DEBUG] Check failed: Enabled=" .. tostring(sel.Enabled) .. ", Selected=" .. tostring(sel.Selected) .. ", SelectedPart=" .. tostring(sel.SelectedPart))
         return false
     end
 
     local char = sel.Selected.Character
     if not char then
-        warn("[DEBUG] Check failed: No character for selected player")
         return false
     end
 
@@ -331,24 +346,25 @@ local function Check()
     if not humanoid or humanoid.Health <= 0 then
         sel.Selected = nil
         sel.SelectedPart = nil
-        warn("[DEBUG] Check failed: No humanoid or humanoid health <= 0")
         return false
     end
 
-    local ko = char:WaitForChild("BodyEffects"):FindFirstChild("K.O")
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    if not bodyEffects then
+        return false
+    end
+
+    local ko = bodyEffects:FindFirstChild("K.O")
     if not ko then
-        warn("[DEBUG] Check failed: No K.O in BodyEffects")
         return false
     end
     local koValue = ko.Value
     local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
 
     if sel.IgnoreRagdoll and koValue then
-        warn("[DEBUG] Check failed: IgnoreRagdoll and KO")
         return false
     end
     if sel.IgnoreGrabbed and grabbed then
-        warn("[DEBUG] Check failed: IgnoreGrabbed and grabbed")
         return false
     end
 
@@ -357,9 +373,12 @@ end
 
 --[[ Получение ближайшей видимой части тела ]]
 local function ClosestPart(char)
+    if not char then
+        return nil
+    end
+
     local humanoid = char:FindFirstChild("Humanoid")
     if not humanoid then
-        warn("[DEBUG] ClosestPart failed: No humanoid in character")
         return nil
     end
 
@@ -374,7 +393,6 @@ local function ClosestPart(char)
         if jumpPart and (not SilentAim.WallCheck or IsPartVisible(jumpPart, char)) then
             local _, onScreen = Camera:WorldToViewportPoint(jumpPart.Position)
             if onScreen then
-                warn("[DEBUG] ClosestPart: Selected jump part " .. SilentAim.JumpAimPart)
                 return jumpPart
             end
         end
@@ -390,13 +408,11 @@ local function ClosestPart(char)
             local isVisible = not SilentAim.WallCheck or IsPartVisible(part, char)
             local _, onScreen = Camera:WorldToViewportPoint(part.Position)
             if isVisible and onScreen then
-                warn("[DEBUG] ClosestPart: Selected part " .. partName)
                 return part
             end
         end
     end
 
-    warn("[DEBUG] ClosestPart: No visible part found")
     return nil
 end
 
@@ -405,7 +421,6 @@ local function GetClosest()
     if not CalcChance(SilentAim.HitChance) then
         SilentAim.Selected = LocalPlayer
         SilentAim.SelectedPart = nil
-        warn("[DEBUG] GetClosest failed: HitChance check failed")
         return
     end
 
@@ -414,7 +429,6 @@ local function GetClosest()
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LocalPlayer or not IsWhitelisted(plr) then
-            warn("[DEBUG] GetClosest: Skipping player " .. plr.Name .. " (LocalPlayer or not whitelisted)")
             continue
         end
         
@@ -429,41 +443,29 @@ local function GetClosest()
                     closest = plr
                     targetPart = part
                     shortest = dist
-                    warn("[DEBUG] GetClosest: Found potential target " .. plr.Name .. " at distance " .. dist)
                 end
-            else
-                warn("[DEBUG] GetClosest: No valid part found for " .. plr.Name)
             end
-        else
-            warn("[DEBUG] GetClosest: No character or humanoid for " .. plr.Name)
         end
     end
 
     SilentAim.Selected = closest
     SilentAim.SelectedPart = targetPart
-    if closest then
-        warn("[DEBUG] GetClosest: Selected target " .. closest.Name)
-    else
-        warn("[DEBUG] GetClosest: No target selected")
-    end
 end
 
 --[[ Обновление индикаторов ]]
 local function UpdateIndicators()
     if not SilentAim.IndicatorEnabled then return end
 
-    -- Локальный игрок HP
     local localHumanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
     local localHP = localHumanoid and math.floor(localHumanoid.Health) or "N/A"
     Indicators.LocalHP.TextLabel.Text = "Local HP: " .. tostring(localHP)
 
-    -- Цель HP и дистанция
     if Check() then
         local targetHumanoid = SilentAim.Selected.Character:FindFirstChild("Humanoid")
         local targetHP = targetHumanoid and math.floor(targetHumanoid.Health) or "N/A"
         Indicators.TargetHP.TextLabel.Text = "Target HP: " .. tostring(targetHP)
 
-        local distance = (LocalPlayer.Character and SilentAim.SelectedPart) and 
+        local distance = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and SilentAim.SelectedPart) and 
             math.floor((LocalPlayer.Character.HumanoidRootPart.Position - SilentAim.SelectedPart.Position).Magnitude) or "N/A"
         Indicators.Distance.TextLabel.Text = "Distance: " .. tostring(distance)
     else
@@ -476,13 +478,11 @@ end
 local function UpdateTracer()
     Beam.Enabled = false
     if not SilentAim.SelectedPart or not Check() then
-        warn("[DEBUG] UpdateTracer: Check failed or no SelectedPart")
         return
     end
 
     local lChar = LocalPlayer.Character
     if not lChar then
-        warn("[DEBUG] UpdateTracer: No LocalPlayer character")
         return
     end
 
@@ -498,9 +498,6 @@ local function UpdateTracer()
         StartAttachment.WorldPosition = lHead.Position
         EndAttachment.WorldPosition = predictedPos
         Beam.Enabled = true
-        warn("[DEBUG] UpdateTracer: Beam updated successfully")
-    else
-        warn("[DEBUG] UpdateTracer: Missing Head or Target Part")
     end
 end
 
@@ -514,12 +511,10 @@ end
 --[[ Отслеживание урона ]]
 local function MonitorDamage()
     if not SilentAim.Selected or not SilentAim.Selected.Character then
-        warn("[DEBUG] MonitorDamage: No selected target or character")
         return
     end
     local humanoid = SilentAim.Selected.Character:FindFirstChild("Humanoid")
     if not humanoid then
-        warn("[DEBUG] MonitorDamage: No humanoid")
         return
     end
 
@@ -529,7 +524,6 @@ local function MonitorDamage()
         if newHealth < lastHealth then
             local damage = math.floor(lastHealth - newHealth)
             ShowDamageIndicator(SilentAim.Selected.Name, damage, math.floor(newHealth))
-            warn("[DEBUG] MonitorDamage: Damage detected - " .. damage)
         end
         lastHealth = newHealth
     end)
@@ -543,11 +537,9 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.Selected = LocalPlayer
             SilentAim.SelectedPart = nil
-            warn("[DEBUG] InputBegan: Target deselected")
         else
             GetClosest()
             MonitorDamage()
-            warn("[DEBUG] InputBegan: Target selection triggered")
         end
     elseif input.KeyCode == SilentAim.ResolverKeybind then
         if SilentAim.ResolverMode == "Velocity" then
@@ -568,7 +560,6 @@ Players.PlayerRemoving:Connect(function(player)
     if SilentAim.Selected == player then
         SilentAim.Selected = nil
         SilentAim.SelectedPart = nil
-        warn("[DEBUG] PlayerRemoving: Target reset due to player leaving")
     end
 end)
 
@@ -577,7 +568,6 @@ local __index
 __index = hookmetamethod(game, "__index", function(t, k)
     if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
         if not Check() then
-            warn("[DEBUG] __index: Check failed, returning default value")
             return __index(t, k)
         end
 
@@ -585,7 +575,6 @@ __index = hookmetamethod(game, "__index", function(t, k)
         if selPart then
             local predictedPos = getPredictedPosition(SilentAim.Selected) or selPart.Position
             local hit = CFrame.new(predictedPos)
-            warn("[DEBUG] __index: Hook triggered, returning " .. (k == "Hit" and "Hit CFrame" or "Target Part"))
             return k == "Hit" and hit or selPart
         end
     end
