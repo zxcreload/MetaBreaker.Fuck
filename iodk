@@ -7,7 +7,655 @@ for _, v in pairs(getgc(true)) do
             setreadonly(indexInstance, false)
             rawset(v, "Table", {"kick", function() coroutine.yield() end})
             warn("\n---[ INFO ]---\nBypassed Adonis Anti-Cheat/Anti-Exploit.\nMethod: Prevented Script Table Communication With Server.")
+            break--[[ Adonis Anti-Cheat Bypass ]]
+for _, v in pairs(getgc(true)) do
+    if type(v) == "table" then
+        setreadonly(v, false)
+        local indexInstance = rawget(v, "indexInstance")
+        if type(indexInstance) == "table" and indexInstance[1] == "kick" then
+            setreadonly(indexInstance, false)
+            rawset(v, "Table", {"kick", function() coroutine.yield() end})
+            warn("\n---[ INFO ]---\nBypassed Adonis Anti-Cheat/Anti-Exploit.\nMethod: Prevented Script Table Communication With Server.")
             break
+        end
+    end
+end
+
+--[[ Настройки Silent Aim ]]
+getgenv().SilentAim = {
+    -- Технические настройки
+    Enabled = true,
+    Prediction = 0.161123123,
+    TargetParts = {
+        "HumanoidRootPart",
+        "UpperTorso",
+        "LowerTorso",
+        "Head",
+        "LeftUpperArm",
+        "RightUpperArm",
+        "LeftLowerArm",
+        "RightLowerArm",
+        "LeftUpperLeg",
+        "RightUpperLeg",
+        "LeftLowerLeg",
+        "RightLowerLeg",
+        "UpperLegs",
+        "LowerLegs",
+        "Legs"
+    },
+    JumpAimPart = "Upperlegs",
+    VisibleCheck = true,
+    HitChance = 100,
+    Keybind = Enum.KeyCode.E,
+    IgnoreRagdoll = false,
+    IgnoreGrabbed = false,
+    WallCheck = false,
+    TargetSelectionMode = "Keybind", -- "Keybind" или "Auto"
+    Whitelist = {"ExamplePlayer", "Friend", "Admin"}, -- Список игроков или части ников
+    WhitelistEnabled = false, -- Включить вайтлист
+
+    -- Настройки резолвера
+    ResolverMode = "Velocity", -- "Velocity", "MoveDirection" или "CalculateCFrame"
+    ResolverKeybind = Enum.KeyCode.J,
+    PredictionXZ = 0.14,
+    PredictionY = 0.14,
+
+    -- Визуальные настройки (индикаторы)
+    IndicatorEnabled = true,
+    IndicatorFontSize = 12,
+    IndicatorFont = Enum.Font.Sarpanch,
+    GradientColors = {
+        Start = {ColorSequenceKeypoint.new(0, Color3.fromRGB(128, 0, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))},
+        End = {ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(128, 0, 255))}
+    },
+    GradientAnimationSpeed = 2, -- Оставляем для совместимости, но не используем
+    DamageIndicatorDuration = 2, -- Время отображения индикатора урона в секундах
+    MaxDamageIndicators = 3, -- Максимальное количество hit индикаторов
+    MinDamageIndicatorInterval = 0.2, -- Минимальный интервал между индикаторами в секундах
+
+    -- Звуковые настройки (hitsounds)
+    HitSounds = {
+        hitmarker = 705502934,
+        rust = 5043539486,
+        CSHS = 9065951723,
+        CoD = 5952120301,
+        Minecraft = 8837706727
+    },
+    SelectedHitSound = "hitmarker", -- Выбор звука по имени
+    HitSoundPitch = 1, -- Высота звука (1 = стандартная)
+    HitSoundVolume = 0.5 -- Громкость звука (0-1)
+}
+
+--[[ Сервисы ]]
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+--[[ Переменные ]]
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = Workspace.CurrentCamera
+local SilentAim = getgenv().SilentAim
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+ScreenGui.Name = "SilentAimIndicators"
+ScreenGui.IgnoreGuiInset = true
+
+--[[ Beam Variables ]]
+local Beam, StartAttachment, EndAttachment
+
+--[[ Инициализация Beam ]]
+local function InitBeam()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+
+    StartAttachment = Instance.new("Attachment")
+    EndAttachment = Instance.new("Attachment")
+
+    Beam = Instance.new("Beam")
+    Beam.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+    Beam.Width0 = 0.2
+    Beam.Width1 = 0.2
+    Beam.Transparency = NumberSequence.new(0)
+    Beam.Attachment0 = StartAttachment
+    Beam.Attachment1 = EndAttachment
+    Beam.Enabled = false
+    Beam.Parent = Workspace
+end
+
+InitBeam()
+
+SilentAim.Selected = nil
+SilentAim.SelectedPart = nil
+
+--[[ Resolver Variables ]]
+local lastPosition = nil
+local lastUpdateTime = nil
+
+--[[ Индикаторы ]]
+local Indicators = {
+    TargetHP = nil,
+    LocalHP = nil,
+    Distance = nil,
+    Damage = {}
+}
+
+local lastIndicatorTime = 0
+local pendingDamage = nil
+
+local function CreateIndicator(name, text, offsetY, animate, isDamageIndicator)
+    local frame = Instance.new("Frame")
+    frame.Name = name
+    frame.Size = UDim2.new(0, 200, 0, 20)
+    frame.BackgroundTransparency = 1
+    frame.Parent = ScreenGui
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextSize = SilentAim.IndicatorFontSize
+    label.Font = SilentAim.IndicatorFont -- Исправлено: Fontaine -> Font
+    label.TextColor3 = isDamageIndicator and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(255, 255, 255)
+    label.TextStrokeTransparency = 0.8
+    label.TextXAlignment = Enum.TextXAlignment.Center
+    label.Parent = frame
+
+    if not isDamageIndicator then
+        local gradient = Instance.new("UIGradient")
+        gradient.Color = ColorSequence.new(SilentAim.GradientColors.Start)
+        gradient.Parent = label
+    end
+
+    if animate then
+        frame.Position = UDim2.new(0.5, -300, 0.5, offsetY)
+        local targetPosition = UDim2.new(0.5, -100, 0.5, offsetY)
+        local tweenInfo = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+        local tween = TweenService:Create(frame, tweenInfo, {Position = targetPosition})
+        tween:Play()
+    else
+        frame.Position = UDim2.new(0.5, -100, 0.5, offsetY)
+    end
+
+    return frame, label
+end
+
+local function ShowDamageIndicator(targetName, damage, remainingHP)
+    local currentTime = tick()
+    local timeSinceLast = currentTime - lastIndicatorTime
+
+    -- Проигрываем звук для каждого нанесения урона
+    local hitSound = Instance.new("Sound")
+    hitSound.Parent = game.CoreGui
+    hitSound.SoundId = "rbxassetid://" .. SilentAim.HitSounds[SilentAim.SelectedHitSound]
+    hitSound.PlaybackSpeed = SilentAim.HitSoundPitch
+    hitSound.Volume = SilentAim.HitSoundVolume
+    hitSound.PlayOnRemove = true
+    hitSound:Destroy()
+
+    -- Если прошло мало времени с последнего индикатора, накапливаем урон
+    if timeSinceLast < SilentAim.MinDamageIndicatorInterval and Indicators.Damage[#Indicators.Damage] then
+        if pendingDamage then
+            pendingDamage.damage = pendingDamage.damage + damage
+        else
+            pendingDamage = {damage = damage, remainingHP = remainingHP}
+        end
+        local lastIndicator = Indicators.Damage[#Indicators.Damage]
+        local text = string.format("hit %s %d (%d)", targetName, pendingDamage.damage, pendingDamage.remainingHP)
+        lastIndicator.TextLabel.Text = text
+        return
+    end
+
+    -- Показываем индикатор с накопленным уроном
+    local totalDamage = damage
+    if pendingDamage then
+        totalDamage = totalDamage + pendingDamage.damage
+        remainingHP = pendingDamage.remainingHP
+        pendingDamage = nil
+    end
+
+    local text = string.format("hit %s %d (%d)", targetName, totalDamage, remainingHP)
+    local offsetY = 130 + (#Indicators.Damage * 10)
+    local dmgIndicator, dmgLabel = CreateIndicator("Damage_" .. tostring(tick()), text, offsetY, true, true)
+    table.insert(Indicators.Damage, dmgIndicator)
+
+    lastIndicatorTime = currentTime
+
+    if #Indicators.Damage > SilentAim.MaxDamageIndicators then
+        local oldestIndicator = table.remove(Indicators.Damage, 1)
+        if oldestIndicator then
+            oldestIndicator:Destroy()
+        end
+    end
+
+    for i, indicator in ipairs(Indicators.Damage) do
+        indicator.Position = UDim2.new(0.5, -100, 0.5, 130 + ((i - 1) * 10))
+    end
+
+    task.spawn(function()
+        task.wait(SilentAim.DamageIndicatorDuration - 0.5)
+        local fadeInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+        local fadeTween = TweenService:Create(dmgLabel, fadeInfo, {TextTransparency = 1, TextStrokeTransparency = 1})
+        fadeTween:Play()
+        fadeTween.Completed:Wait()
+
+        for i, v in ipairs(Indicators.Damage) do
+            if v == dmgIndicator then
+                table.remove(Indicators.Damage, i)
+                v:Destroy()
+                break
+            end
+        end
+
+        for i, indicator in ipairs(Indicators.Damage) do
+            indicator.Position = UDim2.new(0.5, -100, 0.5, 130 + ((i - 1) * 10))
+        end
+    end)
+end
+
+local function InitIndicators()
+    Indicators.TargetHP = CreateIndicator("TargetHP", "Target HP: N/A", 100, false, false)
+    Indicators.LocalHP = CreateIndicator("LocalHP", "Local HP: N/A", 110, false, false)
+    Indicators.Distance = CreateIndicator("Distance", "Distance: N/A", 120, false, false)
+end
+
+if SilentAim.IndicatorEnabled then
+    InitIndicators()
+end
+
+--[[ Методы Resolver ]]
+local function getPredictedPosition(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
+        return nil
+    end
+
+    local aimPart = SilentAim.SelectedPart or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not aimPart then
+        return nil
+    end
+    
+    local aimPartPos = aimPart.Position
+    
+    if not lastPosition or not lastUpdateTime then
+        lastPosition = aimPartPos
+        lastUpdateTime = tick()
+        return aimPartPos
+    end
+
+    local currentTime = tick()
+    local deltaTime = currentTime - lastUpdateTime
+    
+    if SilentAim.ResolverMode == "Velocity" then
+        local velocity = aimPart.Velocity
+        return aimPartPos + Vector3.new(velocity.X * SilentAim.PredictionXZ, velocity.Y * SilentAim.PredictionY, velocity.Z * SilentAim.PredictionXZ)
+    elseif SilentAim.ResolverMode == "MoveDirection" then
+        return aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (SilentAim.PredictionXZ * 10))
+    elseif SilentAim.ResolverMode == "CalculateCFrame" then
+        if (aimPartPos - lastPosition).Magnitude < 0.001 then
+            return aimPartPos 
+        else
+            local distance = (aimPartPos - lastPosition).Magnitude
+            local predictedDistance = (distance / deltaTime) * (0.1 * (SilentAim.PredictionXZ * 10))
+            local predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
+            
+            local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * SilentAim.PredictionY)
+            predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
+            
+            lastUpdateTime = currentTime
+            lastPosition = aimPartPos
+            return predictedPosition
+        end
+    end
+    return nil
+end
+
+--[[ Проверка шанса попадания ]]
+local function CalcChance(p)
+    return math.random() * 100 <= p
+end
+
+--[[ Проверка видимости ]]
+local function IsPartVisible(part, char)
+    if not part or not char then
+        return false
+    end
+
+    local origin = Camera.CFrame.Position
+    local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+
+    if onScreen then
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        local result = Workspace:Raycast(origin, part.Position - origin, rayParams)
+        return not result or result.Instance:IsDescendantOf(char)
+    end
+
+    return false
+end
+
+--[[ Проверка вайтлиста ]]
+local function IsWhitelisted(player)
+    if not SilentAim.WhitelistEnabled then return true end
+    
+    for _, namePart in ipairs(SilentAim.Whitelist) do
+        if string.find(player.Name:lower(), namePart:lower(), 1, true) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+--[[ Получение виртуальной части для комбинированных ног ]]
+local function GetCombinedPart(char, partType)
+    if not char then
+        return nil
+    end
+
+    local leftPart, rightPart
+    
+    if partType == "UpperLegs" then
+        leftPart = char:FindFirstChild("LeftUpperLeg")
+        rightPart = char:FindFirstChild("RightUpperLeg")
+    elseif partType == "LowerLegs" then
+        leftPart = char:FindFirstChild("LeftLowerLeg")
+        rightPart = char:FindFirstChild("RightLowerLeg")
+    elseif partType == "Legs" then
+        leftPart = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("LeftLowerLeg")
+        rightPart = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("RightLowerLeg")
+    end
+    
+    if not leftPart or not rightPart then
+        return nil
+    end
+    
+    local combinedPart = Instance.new("Part")
+    combinedPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    combinedPart.Transparency = 1
+    combinedPart.CanCollide = false
+    combinedPart.Anchored = true
+    
+    local position = (leftPart.Position + rightPart.Position) / 2
+    local velocity = (leftPart.Velocity + rightPart.Velocity) / 2
+    
+    combinedPart.Position = position
+    combinedPart.Velocity = velocity
+    
+    return combinedPart
+end
+
+--[[ Проверка состояния цели ]]
+local function Check()
+    local sel = SilentAim
+    if not (sel.Enabled and sel.Selected and sel.SelectedPart and sel.Selected ~= LocalPlayer) then
+        return false
+    end
+
+    local char = sel.Selected.Character
+    if not char then
+        return false
+    end
+
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        sel.Selected = nil
+        sel.SelectedPart = nil
+        return false
+    end
+
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    if not bodyEffects then
+        return false
+    end
+
+    local ko = bodyEffects:FindFirstChild("K.O")
+    if not ko then
+        return false
+    end
+    local koValue = ko.Value
+    local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
+
+    if sel.IgnoreRagdoll and koValue then
+        return false
+    end
+    if sel.IgnoreGrabbed and grabbed then
+        return false
+    end
+
+    return true
+end
+
+--[[ Получение ближайшей видимой части тела ]]
+local function ClosestPart(char)
+    if not char then
+        return nil
+    end
+
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid then
+        return nil
+    end
+
+    local isJumping = humanoid:GetState() == Enum.HumanoidStateType.Jumping
+
+    if isJumping and SilentAim.JumpAimPart then
+        local jumpPart = char:FindFirstChild(SilentAim.JumpAimPart)
+        if not jumpPart and (SilentAim.JumpAimPart == "UpperLegs" or SilentAim.JumpAimPart == "LowerLegs" or SilentAim.JumpAimPart == "Legs") then
+            jumpPart = GetCombinedPart(char, SilentAim.JumpAimPart)
+        end
+        
+        if jumpPart and (not SilentAim.WallCheck or IsPartVisible(jumpPart, char)) then
+            local _, onScreen = Camera:WorldToViewportPoint(jumpPart.Position)
+            if onScreen then
+                return jumpPart
+            end
+        end
+    end
+
+    for _, partName in ipairs(SilentAim.TargetParts) do
+        local part = char:FindFirstChild(partName)
+        if not part and (partName == "UpperLegs" or partName == "LowerLegs" or partName == "Legs") then
+            part = GetCombinedPart(char, partName)
+        end
+        
+        if part then
+            local isVisible = not SilentAim.WallCheck or IsPartVisible(part, char)
+            local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if isVisible and onScreen then
+                return part
+            end
+        end
+    end
+
+    return nil
+end
+
+--[[ Получение ближайшего игрока ]]
+local function GetClosest()
+    if not CalcChance(SilentAim.HitChance) then
+        SilentAim.Selected = LocalPlayer
+        SilentAim.SelectedPart = nil
+        return
+    end
+
+    local closest, shortest = nil, math.huge
+    local targetPart = nil
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer or not IsWhitelisted(plr) then
+            continue
+        end
+        
+        local char = plr.Character
+        if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+            local part = ClosestPart(char)
+            if part then
+                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+
+                if dist < shortest and (not SilentAim.VisibleCheck or IsPartVisible(part, char)) then
+                    closest = plr
+                    targetPart = part
+                    shortest = dist
+                end
+            end
+        end
+    end
+
+    SilentAim.Selected = closest
+    SilentAim.SelectedPart = targetPart
+end
+
+--[[ Обновление индикаторов ]]
+local function UpdateIndicators()
+    if not SilentAim.IndicatorEnabled then return end
+
+    local localHumanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    local localHP = localHumanoid and math.floor(localHumanoid.Health) or "N/A"
+    Indicators.LocalHP.TextLabel.Text = "Local HP: " .. tostring(localHP)
+
+    if Check() then
+        local targetHumanoid = SilentAim.Selected.Character:FindFirstChild("Humanoid")
+        local targetHP = targetHumanoid and math.floor(targetHumanoid.Health) or "N/A"
+        Indicators.TargetHP.TextLabel.Text = "Target HP: " .. tostring(targetHP)
+
+        local distance = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and SilentAim.SelectedPart) and 
+            math.floor((LocalPlayer.Character.HumanoidRootPart.Position - SilentAim.SelectedPart.Position).Magnitude) or "N/A"
+        Indicators.Distance.TextLabel.Text = "Distance: " .. tostring(distance)
+    else
+        Indicators.TargetHP.TextLabel.Text = "Target HP: N/A"
+        Indicators.Distance.TextLabel.Text = "Distance: N/A"
+    end
+end
+
+--[[ Обновление Beam ]]
+local function UpdateTracer()
+    Beam.Enabled = false
+    if not SilentAim.SelectedPart or not Check() then
+        return
+    end
+
+    local lChar = LocalPlayer.Character
+    if not lChar then
+        return
+    end
+
+    local lHead = lChar:FindFirstChild("Head")
+    local tChar = SilentAim.Selected.Character
+    local tPart = SilentAim.SelectedPart
+
+    if lHead and tPart then
+        local predictedPos = getPredictedPosition(SilentAim.Selected) or tPart.Position
+        
+        StartAttachment.Parent = lHead
+        EndAttachment.Parent = tPart
+        StartAttachment.WorldPosition = lHead.Position
+        EndAttachment.WorldPosition = predictedPos
+        Beam.Enabled = true
+    end
+end
+
+--[[ Выбор цели по клавише или автоматически ]]
+local function UpdateTargetSelection()
+    if SilentAim.TargetSelectionMode == "Auto" then
+        GetClosest()
+    end
+end
+
+--[[ Отслеживание урона ]]
+local function MonitorDamage()
+    if not SilentAim.Selected or not SilentAim.Selected.Character then
+        return
+    end
+    local humanoid = SilentAim.Selected.Character:FindFirstChild("Humanoid")
+    if not humanoid then
+        return
+    end
+
+    local lastHealth = humanoid.Health
+    humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+        local newHealth = humanoid.Health
+        if newHealth < lastHealth then
+            local damage = math.floor(lastHealth - newHealth)
+            ShowDamageIndicator(SilentAim.Selected.Name, damage, math.floor(newHealth))
+        end
+        lastHealth = newHealth
+    end)
+end
+
+--[[ Обработка ввода ]]
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    
+    if input.KeyCode == SilentAim.Keybind and SilentAim.TargetSelectionMode == "Keybind" then
+        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+            SilentAim.Selected = LocalPlayer
+            SilentAim.SelectedPart = nil
+        else
+            GetClosest()
+            MonitorDamage()
+        end
+    elseif input.KeyCode == SilentAim.ResolverKeybind then
+        if SilentAim.ResolverMode == "Velocity" then
+            SilentAim.ResolverMode = "MoveDirection"
+            warn("Resolver Mode: MoveDirection")
+        elseif SilentAim.ResolverMode == "MoveDirection" then
+            SilentAim.ResolverMode = "CalculateCFrame"
+            warn("Resolver Mode: CalculateCFrame")
+        else
+            SilentAim.ResolverMode = "Velocity"
+            warn("Resolver Mode: Velocity")
+        end
+    end
+end)
+
+--[[ Сброс цели при смерти ]]
+Players.PlayerRemoving:Connect(function(player)
+    if SilentAim.Selected == player then
+        SilentAim.Selected = nil
+        SilentAim.SelectedPart = nil
+    end
+end)
+
+--[[ Хук на Mouse.Hit / Mouse.Target ]]
+local __index
+__index = hookmetamethod(game, "__index", function(t, k)
+    if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
+        if not Check() then
+            return __index(t, k)
+        end
+
+        local selPart = SilentAim.SelectedPart
+        if selPart then
+            local predictedPos = getPredictedPosition(SilentAim.Selected) or selPart.Position
+            local hit = CFrame.new(predictedPos)
+            return k == "Hit" and hit or selPart
+        end
+    end
+    return __index(t, k)
+end)
+
+--[[ Heartbeat обновление Beam и цели ]]
+RunService.Heartbeat:Connect(function()
+    UpdateTracer()
+    UpdateTargetSelection()
+    UpdateIndicators()
+end)
+
+--[[ Очистка при выходе ]]
+game:BindToClose(function()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+    if ScreenGui then ScreenGui:Destroy() end
+end)
+
+warn("Silent Aim loaded successfully!")
+warn("Resolver Mode: " .. SilentAim.ResolverMode)
+warn("Press " .. tostring(SilentAim.ResolverKeybind) .. " to switch resolver modes")
         end
     end
 end
