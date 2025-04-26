@@ -15,9 +15,9 @@ end
 --[[ Silent Aim Settings ]]
 getgenv().SilentAim = {
     Enabled = true,
-    MultiConfigPredictionEnabled = false, -- Toggle for multi-config prediction system
-    DefaultPrediction = 0.161123123, -- Default prediction when multi-config is disabled
-    PredictionConfigs = { -- Custom prediction values based on distance
+    MultiConfigPredictionEnabled = false,
+    DefaultPrediction = 0.161123123,
+    PredictionConfigs = {
         {Distance = 50, PredictionXZ = 0.12, PredictionY = 0.12},
         {Distance = 100, PredictionXZ = 0.14, PredictionY = 0.14},
         {Distance = 1000, PredictionXZ = 0.16, PredictionY = 0.16},
@@ -47,16 +47,14 @@ getgenv().SilentAim = {
     IgnoreRagdoll = false,
     IgnoreGrabbed = false,
     WallCheck = false,
-    TargetSelectionMode = "Keybind", -- "Keybind" or "Auto"
+    TargetSelectionMode = "Keybind",
     Whitelist = {"ExamplePlayer", "Friend", "Admin"},
     WhitelistEnabled = false,
-    ReacquisitionMode = "Immediate", -- "Immediate", "Nearest", "Priority"
-    PriorityList = {"Enemy1", "Enemy2", "Enemy3"}, -- Used in Priority reacquisition mode
+    ReacquisitionMode = "Immediate",
+    PriorityList = {"Enemy1", "Enemy2", "Enemy3"},
     KeepTargetOnDeath = true,
-
     ResolverMode = "Velocity",
     ResolverKeybind = Enum.KeyCode.J,
-
     IndicatorEnabled = true,
     IndicatorFontSize = 12,
     IndicatorFont = Enum.Font.Sarpanch,
@@ -67,7 +65,6 @@ getgenv().SilentAim = {
     DamageIndicatorDuration = 2,
     MaxDamageIndicators = 3,
     MinDamageIndicatorInterval = 0.2,
-
     HitSounds = {
         hitmarker = 705502934,
         rust = 5043539486,
@@ -77,7 +74,15 @@ getgenv().SilentAim = {
     },
     SelectedHitSound = "hitmarker",
     HitSoundPitch = 1,
-    HitSoundVolume = 0.5
+    HitSoundVolume = 0.5,
+    DesyncStomp = {
+        Enabled = true,
+        StompCount = 5, -- Количество вызовов "Stomp" перед отключением desync
+        StompInterval = 0.1, -- Интервал между вызовами "Stomp" в секундах
+        YOffset = 2, -- Высота над целью
+        UnequipWeaponDuringDesync = true, -- Убирать оружие во время desync
+        ToggleKeybind = Enum.KeyCode.T -- Кейбинд для включения/выключения DesyncStomp
+    }
 }
 
 --[[ Services ]]
@@ -86,6 +91,7 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 --[[ Variables ]]
 local LocalPlayer = Players.LocalPlayer
@@ -94,9 +100,23 @@ local SilentAim = getgenv().SilentAim
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
 ScreenGui.Name = "SilentAimIndicators"
 ScreenGui.IgnoreGuiInset = true
+local Camera = Workspace.CurrentCamera
+local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HRP = Char:WaitForChild("HumanoidRootPart")
+local Humanoid = Char:WaitForChild("Humanoid")
 
 --[[ Beam Variables ]]
 local Beam, StartAttachment, EndAttachment
+
+--[[ Desync Variables ]]
+local followPart = nil
+local desyncBoxESP = nil
+local stompCounter = 0
+local lastStompTime = nil
+local isDesyncActive = false
+local desyncAppliedToTarget = {} -- Таблица для отслеживания целей, к которым применен desync
+local targetKOStates = {} -- Таблица для отслеживания состояния K.O. и соединений
+local lastEquippedTool = nil -- Для хранения убранного оружия
 
 --[[ Initialize Beam ]]
 local function InitBeam()
@@ -108,7 +128,7 @@ local function InitBeam()
     EndAttachment = Instance.new("Attachment")
 
     Beam = Instance.new("Beam")
-    Beam.Color = ColorSequence.new(SilentAim.GradientColors.Start) -- Initialize with the starting gradient
+    Beam.Color = ColorSequence.new(SilentAim.GradientColors.Start)
     Beam.Width0 = 0.2
     Beam.Width1 = 0.2
     Beam.Transparency = NumberSequence.new(0)
@@ -122,7 +142,7 @@ InitBeam()
 
 SilentAim.Selected = nil
 SilentAim.SelectedPart = nil
-SilentAim.PreviousTarget = nil -- Track previous target for reacquisition
+SilentAim.PreviousTarget = nil
 
 --[[ Resolver Variables ]]
 local lastPosition = nil
@@ -134,13 +154,12 @@ local Indicators = {
     TargetHP = nil,
     LocalHP = nil,
     Distance = nil,
+    DesyncStompStatus = nil,
     Damage = {}
 }
 
 local lastIndicatorTime = 0
 local pendingDamage = nil
-
--- List of gradients for animation
 local gradientsToAnimate = {}
 
 local function CreateIndicator(name, text, offsetY, animate, isDamageIndicator)
@@ -182,17 +201,27 @@ local function CreateIndicator(name, text, offsetY, animate, isDamageIndicator)
 end
 
 local function ShowDamageIndicator(targetName, damage, remainingHP)
+    -- Добавим отладочное сообщение
+    warn("[DEBUG] ShowDamageIndicator called for " .. tostring(targetName) .. " with damage " .. tostring(damage) .. " and remaining HP " .. tostring(remainingHP))
+
+    -- Проверяем валидность аргументов
+    if not targetName or not damage or not remainingHP then
+        warn("[DEBUG] Invalid arguments in ShowDamageIndicator: targetName=" .. tostring(targetName) .. ", damage=" .. tostring(damage) .. ", remainingHP=" .. tostring(remainingHP))
+        return
+    end
+
     local currentTime = tick()
     local timeSinceLast = currentTime - lastIndicatorTime
 
     local hitSound = Instance.new("Sound")
     hitSound.Parent = game.CoreGui
-    hitSound.SoundId = "rbxassetid://" .. SilentAim.HitSounds[SilentAim.SelectedHitSound]
+    hitSound.SoundId = "rbxassetid://" .. (SilentAim.HitSounds[SilentAim.SelectedHitSound] or SilentAim.HitSounds.hitmarker)
     hitSound.PlaybackSpeed = SilentAim.HitSoundPitch
     hitSound.Volume = SilentAim.HitSoundVolume
     hitSound.PlayOnRemove = true
     hitSound:Destroy()
 
+    -- Если урон наносится слишком быстро, объединяем его с предыдущим
     if timeSinceLast < SilentAim.MinDamageIndicatorInterval and Indicators.Damage[#Indicators.Damage] then
         if pendingDamage then
             pendingDamage.damage = pendingDamage.damage + damage
@@ -202,6 +231,7 @@ local function ShowDamageIndicator(targetName, damage, remainingHP)
         local lastIndicator = Indicators.Damage[#Indicators.Damage]
         local text = string.format("hit %s %d (%d)", targetName, pendingDamage.damage, pendingDamage.remainingHP)
         lastIndicator.TextLabel.Text = text
+        warn("[DEBUG] Updated existing hitlog: " .. text)
         return
     end
 
@@ -213,10 +243,16 @@ local function ShowDamageIndicator(targetName, damage, remainingHP)
     end
 
     local text = string.format("hit %s %d (%d)", targetName, totalDamage, remainingHP)
-    local offsetY = 150 + (#Indicators.Damage * 10)
-    local dmgIndicator, dmgLabel = CreateIndicator("Damage_" .. tostring(tick()), text, offsetY, true, true)
-    table.insert(Indicators.Damage, dmgIndicator)
+    local offsetY = 160 + (#Indicators.Damage * 10)
+    local success, dmgIndicator, dmgLabel = pcall(function()
+        return CreateIndicator("Damage_" .. tostring(tick()), text, offsetY, true, true)
+    end)
+    if not success then
+        warn("[DEBUG] Failed to create damage indicator: " .. tostring(dmgIndicator))
+        return
+    end
 
+    table.insert(Indicators.Damage, dmgIndicator)
     lastIndicatorTime = currentTime
 
     if #Indicators.Damage > SilentAim.MaxDamageIndicators then
@@ -227,7 +263,7 @@ local function ShowDamageIndicator(targetName, damage, remainingHP)
     end
 
     for i, indicator in ipairs(Indicators.Damage) do
-        indicator.Position = UDim2.new(0.5, -100, 0.5, 150 + ((i - 1) * 10))
+        indicator.Position = UDim2.new(0.5, -100, 0.5, 160 + ((i - 1) * 10))
     end
 
     local fadeInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
@@ -244,10 +280,12 @@ local function ShowDamageIndicator(targetName, damage, remainingHP)
             end
 
             for i, indicator in ipairs(Indicators.Damage) do
-                indicator.Position = UDim2.new(0.5, -100, 0.5, 150 + ((i - 1) * 10))
+                indicator.Position = UDim2.new(0.5, -100, 0.5, 160 + ((i - 1) * 10))
             end
         end)
     end)
+
+    warn("[DEBUG] New hitlog created: " .. text)
 end
 
 local function InitIndicators()
@@ -255,13 +293,13 @@ local function InitIndicators()
     Indicators.TargetHP = CreateIndicator("TargetHP", "Target HP: N/A", 120, false, false)
     Indicators.LocalHP = CreateIndicator("LocalHP", "Local HP: N/A", 130, false, false)
     Indicators.Distance = CreateIndicator("Distance", "Distance: N/A", 140, false, false)
+    Indicators.DesyncStompStatus = CreateIndicator("DesyncStompStatus", "Autostomp: " .. (SilentAim.DesyncStomp.Enabled and "Enabled" or "Disabled"), 150, false, false)
 end
 
 if SilentAim.IndicatorEnabled then
     InitIndicators()
 end
 
--- Color interpolation function
 local function LerpColor(color1, color2, t)
     return Color3.new(
         color1.R + (color2.R - color1.R) * t,
@@ -270,7 +308,6 @@ local function LerpColor(color1, color2, t)
     )
 end
 
--- Gradient animation
 local gradientAnimationConnection
 local function StartGradientAnimation()
     if gradientAnimationConnection then
@@ -295,14 +332,12 @@ local function StartGradientAnimation()
             table.insert(newKeypoints, ColorSequenceKeypoint.new(startPoint.Time, lerpedColor))
         end
 
-        -- Update indicator gradients
         for _, gradient in ipairs(gradientsToAnimate) do
             if gradient and gradient.Parent then
                 gradient.Color = ColorSequence.new(newKeypoints)
             end
         end
 
-        -- Update beam color to match the gradient
         if Beam and Beam.Parent then
             Beam.Color = ColorSequence.new(newKeypoints)
         end
@@ -311,13 +346,12 @@ end
 
 StartGradientAnimation()
 
---[[ Get Prediction Based on Distance ]]
 local function GetPredictionForDistance(distance)
     if not SilentAim.MultiConfigPredictionEnabled then
         return SilentAim.DefaultPrediction, SilentAim.DefaultPrediction
     end
 
-    local selectedConfig = SilentAim.PredictionConfigs[1] -- Default to first config
+    local selectedConfig = SilentAim.PredictionConfigs[1]
     for _, config in ipairs(SilentAim.PredictionConfigs) do
         if distance <= config.Distance then
             selectedConfig = config
@@ -327,7 +361,6 @@ local function GetPredictionForDistance(distance)
     return selectedConfig.PredictionXZ, selectedConfig.PredictionY
 end
 
---[[ Resolver Methods ]]
 local function getPredictedPosition(targetPlayer)
     if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then
         return nil
@@ -349,7 +382,6 @@ local function getPredictedPosition(targetPlayer)
     local currentTime = tick()
     local deltaTime = currentTime - lastUpdateTime
 
-    -- Calculate distance to target
     local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local distance = localRoot and (localRoot.Position - aimPartPos).Magnitude or math.huge
     local predictionXZ, predictionY = GetPredictionForDistance(distance)
@@ -378,12 +410,10 @@ local function getPredictedPosition(targetPlayer)
     return nil
 end
 
---[[ Hit Chance Calculation ]]
 local function CalcChance(p)
     return math.random() * 100 <= p
 end
 
---[[ Visibility Check ]]
 local function IsPartVisible(part, char)
     if not part or not char then
         return false
@@ -408,7 +438,6 @@ local function IsPartVisible(part, char)
     return false
 end
 
---[[ Whitelist Check ]]
 local function IsWhitelisted(player)
     if not SilentAim.WhitelistEnabled then return true end
     
@@ -421,7 +450,6 @@ local function IsWhitelisted(player)
     return false
 end
 
---[[ Get Combined Part for Legs ]]
 local function GetCombinedPart(char, partType)
     if not char then
         return nil
@@ -459,9 +487,8 @@ local function GetCombinedPart(char, partType)
     return combinedPart
 end
 
---[[ Get Closest Visible Body Part ]]
 local function ClosestPart(char)
-    if not char then
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) then
         return nil
     end
 
@@ -492,6 +519,10 @@ local function ClosestPart(char)
     end
 
     for _, partName in ipairs(SilentAim.TargetParts) do
+        if not char.Parent or not char:IsDescendantOf(Workspace) then
+            return nil
+        end
+
         local part = char:FindFirstChild(partName)
         if not part and (partName == "UpperLegs" or partName == "LowerLegs" or partName == "Legs") then
             part = GetCombinedPart(char, partName)
@@ -509,7 +540,6 @@ local function ClosestPart(char)
     return nil
 end
 
---[[ Target Reacquisition Logic ]]
 local function ReacquireTarget()
     if not SilentAim.KeepTargetOnDeath then
         SilentAim.Selected = nil
@@ -518,19 +548,22 @@ local function ReacquireTarget()
     end
 
     if SilentAim.ReacquisitionMode == "Immediate" then
-        -- Wait for the previous target to respawn
-        if SilentAim.PreviousTarget then
+        if SilentAim.PreviousTarget and SilentAim.PreviousTarget.Parent and SilentAim.PreviousTarget:IsDescendantOf(Players) then
             local player = SilentAim.PreviousTarget
-            if player.Character then
+            if player.Character and player.Character.Parent and player.Character:IsDescendantOf(Workspace) then
                 SilentAim.Selected = player
                 SilentAim.SelectedPart = ClosestPart(player.Character)
                 if SilentAim.SelectedPart then
                     MonitorDamage()
                 end
             else
-                -- Connect to CharacterAdded to re-target upon respawn
+                -- Подписываемся на CharacterAdded только если игрок всё ещё в игре
                 local connection
                 connection = player.CharacterAdded:Connect(function(char)
+                    if not player or not player.Parent or not player:IsDescendantOf(Players) then
+                        connection:Disconnect()
+                        return
+                    end
                     SilentAim.Selected = player
                     SilentAim.SelectedPart = ClosestPart(char)
                     if SilentAim.SelectedPart then
@@ -539,16 +572,18 @@ local function ReacquireTarget()
                     connection:Disconnect()
                 end)
             end
+        else
+            SilentAim.Selected = nil
+            SilentAim.SelectedPart = nil
+            SilentAim.PreviousTarget = nil
         end
     elseif SilentAim.ReacquisitionMode == "Nearest" then
-        -- Switch to the closest visible player
         GetClosest()
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.PreviousTarget = SilentAim.Selected
             MonitorDamage()
         end
     elseif SilentAim.ReacquisitionMode == "Priority" then
-        -- Select the next target from the priority list
         for _, playerName in ipairs(SilentAim.PriorityList) do
             local player = Players:FindFirstChild(playerName)
             if player and player ~= LocalPlayer and player.Character and IsWhitelisted(player) then
@@ -562,7 +597,6 @@ local function ReacquireTarget()
                 end
             end
         end
-        -- Fallback to closest if no priority target is available
         GetClosest()
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.PreviousTarget = SilentAim.Selected
@@ -571,57 +605,84 @@ local function ReacquireTarget()
     end
 end
 
---[[ Check Target State ]]
 local function Check()
     local sel = SilentAim
     if not (sel.Enabled and sel.Selected and sel.Selected ~= LocalPlayer) then
         return false
     end
 
-    local char = sel.Selected.Character
-    if not char then
+    -- Проверяем, существует ли игрок в Players
+    if not sel.Selected.Parent or not sel.Selected:IsDescendantOf(Players) then
+        sel.Selected = nil
+        sel.SelectedPart = nil
         ReacquireTarget()
         return false
     end
 
+    -- Проверяем, существует ли персонаж
+    local char = sel.Selected.Character
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) then
+        sel.Selected = nil
+        sel.SelectedPart = nil
+        ReacquireTarget()
+        return false
+    end
+
+    -- Проверяем, существует ли Humanoid
     local humanoid = char:FindFirstChild("Humanoid")
     if not humanoid then
+        sel.Selected = nil
+        sel.SelectedPart = nil
         ReacquireTarget()
         return false
     end
 
+    -- Проверяем здоровье
     if not sel.KeepTargetOnDeath and humanoid.Health <= 0 then
+        sel.Selected = nil
+        sel.SelectedPart = nil
         ReacquireTarget()
         return false
     end
 
+    -- Проверяем BodyEffects и K.O.
     local bodyEffects = char:FindFirstChild("BodyEffects")
     if not bodyEffects then
+        sel.Selected = nil
+        sel.SelectedPart = nil
         ReacquireTarget()
         return false
     end
 
     local ko = bodyEffects:FindFirstChild("K.O")
     if not ko then
+        sel.Selected = nil
+        sel.SelectedPart = nil
         ReacquireTarget()
         return false
     end
     local koValue = ko.Value
     local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
 
-    if sel.IgnoreRagdoll and koValue then
+    if sel.IgnoreRagdoll and koValue and not sel.DesyncStomp.Enabled then
+        sel.Selected = nil
+        sel.SelectedPart = nil
         ReacquireTarget()
         return false
     end
     if sel.IgnoreGrabbed and grabbed then
+        sel.Selected = nil
+        sel.SelectedPart = nil
         ReacquireTarget()
         return false
     end
 
-    -- Re-select the part if it becomes invalid
-    if not sel.SelectedPart then
+    -- Проверяем, существует ли выбранная часть
+    if not sel.SelectedPart or not sel.SelectedPart.Parent or not sel.SelectedPart:IsDescendantOf(char) then
         sel.SelectedPart = ClosestPart(char)
         if not sel.SelectedPart then
+            sel.Selected = nil
+            sel.SelectedPart = nil
             ReacquireTarget()
             return false
         end
@@ -630,7 +691,6 @@ local function Check()
     return true
 end
 
---[[ Get Closest Player ]]
 local function GetClosest()
     if not CalcChance(SilentAim.HitChance) then
         SilentAim.Selected = LocalPlayer
@@ -653,8 +713,12 @@ local function GetClosest()
             continue
         end
         
+        if not plr.Parent or not plr:IsDescendantOf(Players) then
+            continue
+        end
+
         local char = plr.Character
-        if char and char:FindFirstChild("Humanoid") then
+        if char and char.Parent and char:IsDescendantOf(Workspace) and char:FindFirstChild("Humanoid") then
             local part = ClosestPart(char)
             if part then
                 local pos, onScreen = camera:WorldToViewportPoint(part.Position)
@@ -682,7 +746,6 @@ local function GetClosest()
     end
 end
 
---[[ Update Indicators ]]
 local function UpdateIndicators()
     if not SilentAim.IndicatorEnabled then return end
 
@@ -704,34 +767,51 @@ local function UpdateIndicators()
     end
 end
 
---[[ Update Beam ]]
 local function UpdateTracer()
     Beam.Enabled = false
     if not Check() then
         return
     end
 
+    -- Дополнительная проверка на существование всех необходимых объектов
     local lChar = LocalPlayer.Character
     if not lChar then
         return
     end
 
     local lHead = lChar:FindFirstChild("Head")
-    local tChar = SilentAim.Selected.Character
-    local tPart = SilentAim.SelectedPart
-
-    if lHead and tPart and tChar then
-        local predictedPos = getPredictedPosition(SilentAim.Selected) or tPart.Position
-        
-        StartAttachment.Parent = lHead
-        EndAttachment.Parent = tPart
-        StartAttachment.WorldPosition = lHead.Position
-        EndAttachment.WorldPosition = predictedPos
-        Beam.Enabled = true
+    if not lHead then
+        return
     end
+
+    local tChar = SilentAim.Selected and SilentAim.Selected.Character
+    if not tChar or not tChar.Parent or not tChar:IsDescendantOf(Workspace) then
+        SilentAim.Selected = nil
+        SilentAim.SelectedPart = nil
+        ReacquireTarget()
+        return
+    end
+
+    local tPart = SilentAim.SelectedPart
+    if not tPart or not tPart.Parent or not tPart:IsDescendantOf(tChar) then
+        SilentAim.SelectedPart = ClosestPart(tChar)
+        if not SilentAim.SelectedPart then
+            SilentAim.Selected = nil
+            SilentAim.SelectedPart = nil
+            ReacquireTarget()
+            return
+        end
+        tPart = SilentAim.SelectedPart
+    end
+
+    local predictedPos = getPredictedPosition(SilentAim.Selected) or tPart.Position
+    StartAttachment.Parent = lHead
+    EndAttachment.Parent = tPart
+    StartAttachment.WorldPosition = lHead.Position
+    EndAttachment.WorldPosition = predictedPos
+    Beam.Enabled = true
 end
 
---[[ Update Target Selection ]]
 local function UpdateTargetSelection()
     if SilentAim.TargetSelectionMode == "Auto" then
         GetClosest()
@@ -742,45 +822,396 @@ local function UpdateTargetSelection()
     end
 end
 
---[[ Monitor Damage ]]
 local healthConnection = nil
 
 local function MonitorDamage()
-    if not SilentAim.Selected or not SilentAim.Selected.Character then
-        return
-    end
-    local humanoid = SilentAim.Selected.Character:FindFirstChild("Humanoid")
-    if not humanoid then
+    if not SilentAim.Selected then
+        warn("[DEBUG] MonitorDamage: No target selected")
         return
     end
 
-    if healthConnection then
-        healthConnection:Disconnect()
-        healthConnection = nil
-    end
-
-    local lastHealth = humanoid.Health
-    healthConnection = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-        if not SilentAim.Selected then
-            if healthConnection then
-                healthConnection:Disconnect()
-                healthConnection = nil
-            end
+    local success, err = pcall(function()
+        if not SilentAim.Selected.Parent or not SilentAim.Selected:IsDescendantOf(Players) then
+            warn("[DEBUG] MonitorDamage: Target player not in Players")
             return
         end
 
-        local newHealth = humanoid.Health
-        if newHealth < lastHealth then
-            local damage = math.floor(lastHealth - newHealth)
-            ShowDamageIndicator(SilentAim.Selected.Name, damage, math.floor(newHealth))
-        elseif newHealth <= 0 then
-            ReacquireTarget()
+        local char = SilentAim.Selected.Character
+        if not char or not char.Parent or not char:IsDescendantOf(Workspace) then
+            warn("[DEBUG] MonitorDamage: Target character not found")
+            return
         end
-        lastHealth = newHealth
+
+        local humanoid = char:FindFirstChild("Humanoid")
+        if not humanoid then
+            warn("[DEBUG] MonitorDamage: Humanoid not found for target")
+            return
+        end
+
+        -- Очищаем старое соединение, если оно существует
+        if healthConnection then
+            healthConnection:Disconnect()
+            healthConnection = nil
+        end
+
+        local lastHealth = humanoid.Health
+        healthConnection = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+            local successInner, errInner = pcall(function()
+                if not SilentAim.Selected or not SilentAim.Selected.Character or not SilentAim.Selected.Character:FindFirstChild("Humanoid") then
+                    warn("[DEBUG] Health changed but target invalid, disconnecting")
+                    if healthConnection then
+                        healthConnection:Disconnect()
+                        healthConnection = nil
+                    end
+                    return
+                end
+
+                local newHealth = humanoid.Health
+                local targetName = SilentAim.Selected.Name or "Unknown"
+                warn("[DEBUG] Health changed for " .. targetName .. ": " .. tostring(lastHealth) .. " -> " .. tostring(newHealth))
+
+                if newHealth < lastHealth then
+                    local damage = math.floor(lastHealth - newHealth)
+                    ShowDamageIndicator(targetName, damage, math.floor(newHealth))
+                elseif newHealth <= 0 then
+                    warn("[DEBUG] Target died, reacquiring")
+                    ReacquireTarget()
+                end
+                lastHealth = newHealth
+            end)
+            if not successInner then
+                warn("[DEBUG] Error in health change handler: " .. tostring(errInner))
+            end
+        end)
+
+        warn("[DEBUG] MonitorDamage: Health connection established for " .. (SilentAim.Selected.Name or "Unknown"))
     end)
+
+    if not success then
+        warn("[DEBUG] Error in MonitorDamage: " .. tostring(err))
+    end
 end
 
---[[ Handle Input ]]
+--[[ Desync Stomp Logic with 3D Box ESP ]]
+local function createFollowPart()
+    local part = Instance.new("Part")
+    part.Name = "FollowPart"
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Size = Vector3.new(0.1, 0.1, 0.1)
+    part.Parent = Workspace
+    return part
+end
+
+local function createBoxESP()
+    local box = {}
+    for i = 1, 12 do
+        local line = Drawing.new("Line")
+        line.Visible = false
+        line.Color = Color3.fromRGB(0, 255, 255)
+        line.Thickness = 2
+        line.Transparency = 1
+        table.insert(box, line)
+    end
+    return box
+end
+
+local function updateBoxESP(box, position)
+    if not Camera then return end
+
+    local size = Vector3.new(2, 2, 2)
+    local corners = {
+        position + Vector3.new(-size.X/2, -size.Y/2, -size.Z/2),
+        position + Vector3.new(size.X/2, -size.Y/2, -size.Z/2),
+        position + Vector3.new(size.X/2, -size.Y/2, size.Z/2),
+        position + Vector3.new(-size.X/2, -size.Y/2, size.Z/2),
+        position + Vector3.new(-size.X/2, size.Y/2, -size.Z/2),
+        position + Vector3.new(size.X/2, size.Y/2, -size.Z/2),
+        position + Vector3.new(size.X/2, size.Y/2, size.Z/2),
+        position + Vector3.new(-size.X/2, size.Y/2, size.Z/2)
+    }
+
+    local screenCorners = {}
+    for i, corner in ipairs(corners) do
+        local screenPos, onScreen = Camera:WorldToViewportPoint(corner)
+        screenCorners[i] = {Vector2.new(screenPos.X, screenPos.Y), onScreen}
+    end
+
+    local lines = {
+        {1, 2}, {2, 3}, {3, 4}, {4, 1},
+        {5, 6}, {6, 7}, {7, 8}, {8, 5},
+        {1, 5}, {2, 6}, {3, 7}, {4, 8}
+    }
+
+    local allOnScreen = true
+    for _, corner in ipairs(screenCorners) do
+        if not corner[2] then
+            allOnScreen = false
+            break
+        end
+    end
+
+    for i, line in ipairs(lines) do
+        local lineObj = box[i]
+        if allOnScreen then
+            lineObj.Visible = true
+            lineObj.From = screenCorners[line[1]][1]
+            lineObj.To = screenCorners[line[2]][1]
+        else
+            lineObj.Visible = false
+        end
+    end
+end
+
+local function cleanupBoxESP(box)
+    for _, line in ipairs(box) do
+        line:Remove()
+    end
+end
+
+local function setupDesync()
+    if isDesyncActive then return end
+    isDesyncActive = true
+    followPart = createFollowPart()
+    desyncBoxESP = createBoxESP()
+    stompCounter = SilentAim.DesyncStomp.StompCount
+    lastStompTime = tick()
+
+    -- Убираем оружие, если настройка включена
+    if SilentAim.DesyncStomp.UnequipWeaponDuringDesync then
+        local equippedTool = Char and Char:FindFirstChildOfClass("Tool")
+        if equippedTool then
+            lastEquippedTool = equippedTool
+            equippedTool.Parent = LocalPlayer.Backpack
+            warn("[DEBUG] Weapon unequipped during desync: " .. equippedTool.Name)
+        end
+    end
+
+    warn("[DEBUG] Desync started with stomp count: " .. tostring(stompCounter))
+end
+
+local function cleanupDesync()
+    if not isDesyncActive then return end
+    isDesyncActive = false
+    if followPart then followPart:Destroy() followPart = nil end
+    if desyncBoxESP then cleanupBoxESP(desyncBoxESP) desyncBoxESP = nil end
+    stompCounter = 0
+    lastStompTime = nil
+    Camera.CameraSubject = Humanoid
+
+    -- Возвращаем оружие, если оно было убрано
+    if SilentAim.DesyncStomp.UnequipWeaponDuringDesync and lastEquippedTool then
+        if lastEquippedTool.Parent == LocalPlayer.Backpack then
+            lastEquippedTool.Parent = Char
+            warn("[DEBUG] Weapon re-equipped after desync: " .. lastEquippedTool.Name)
+        end
+        lastEquippedTool = nil
+    end
+
+    warn("[DEBUG] Desync cleaned up after stomp count reached 0")
+end
+
+local function performStomp()
+    ReplicatedStorage.MainEvent:FireServer("Stomp")
+    if ReplicatedStorage:FindFirstChild("assets") and ReplicatedStorage.assets:FindFirstChild("dh") then
+        ReplicatedStorage.assets.dh.MainEvent:FireServer("Stomp")
+    end
+    stompCounter = stompCounter - 1
+    lastStompTime = tick()
+    warn("[DEBUG] Stomp called, remaining count: " .. tostring(stompCounter))
+    if stompCounter <= 0 then
+        cleanupDesync()
+    end
+end
+
+-- Мониторинг состояния K.O. для каждой цели
+local function MonitorKOState(targetPlayer)
+    if not targetPlayer or not targetPlayer.Parent or not targetPlayer:IsDescendantOf(Players) then
+        return
+    end
+
+    local char = targetPlayer.Character
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) then
+        return
+    end
+
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    if not bodyEffects then
+        return
+    end
+
+    local ko = bodyEffects:FindFirstChild("K.O")
+    if not ko then
+        return
+    end
+
+    -- Отслеживаем текущее состояние K.O.
+    local currentKOState = ko.Value
+    local lastKOState = targetKOStates[targetPlayer] and targetKOStates[targetPlayer].state or false
+
+    if currentKOState ~= lastKOState then
+        if not currentKOState then
+            -- Цель вышла из состояния K.O., сбрасываем флаг desyncAppliedToTarget
+            if targetPlayer and targetPlayer.Parent then
+                desyncAppliedToTarget[targetPlayer] = nil
+                local targetName = pcall(function() return targetPlayer.Name end) and targetPlayer.Name or "Unknown"
+                warn("[DEBUG] Target " .. targetName .. " exited K.O., desync flag reset")
+            end
+        end
+        if not targetKOStates[targetPlayer] then
+            targetKOStates[targetPlayer] = {}
+        end
+        targetKOStates[targetPlayer].state = currentKOState
+    end
+
+    -- Подключаем мониторинг изменения K.O.
+    if not targetKOStates[targetPlayer] or not targetKOStates[targetPlayer].connection then
+        local connection = ko:GetPropertyChangedSignal("Value"):Connect(function()
+            if not targetPlayer or not targetPlayer.Parent or not targetPlayer:IsDescendantOf(Players) then
+                -- Если игрок покинул игру, отключаем соединение
+                if targetKOStates[targetPlayer] and targetKOStates[targetPlayer].connection then
+                    targetKOStates[targetPlayer].connection:Disconnect()
+                    targetKOStates[targetPlayer] = nil
+                end
+                return
+            end
+
+            local char = targetPlayer.Character
+            if not char or not char.Parent or not char:IsDescendantOf(Workspace) then
+                return
+            end
+
+            local bodyEffects = char:FindFirstChild("BodyEffects")
+            if not bodyEffects then
+                return
+            end
+
+            local ko = bodyEffects:FindFirstChild("K.O")
+            if not ko then
+                return
+            end
+
+            local newKOState = ko.Value
+            if not targetKOStates[targetPlayer] then
+                targetKOStates[targetPlayer] = { state = newKOState }
+            end
+            if newKOState ~= targetKOStates[targetPlayer].state then
+                if not newKOState then
+                    -- Цель вышла из K.O., сбрасываем флаг
+                    desyncAppliedToTarget[targetPlayer] = nil
+                    local targetName = pcall(function() return targetPlayer.Name end) and targetPlayer.Name or "Unknown"
+                    warn("[DEBUG] Target " .. targetName .. " exited K.O., desync flag reset")
+                end
+                targetKOStates[targetPlayer].state = newKOState
+            end
+        end)
+        if not targetKOStates[targetPlayer] then
+            targetKOStates[targetPlayer] = {}
+        end
+        targetKOStates[targetPlayer].connection = connection
+    end
+end
+
+-- Функция для поиска подходящей части тела для desync
+local function GetRagdollPart(char)
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) then
+        return nil
+    end
+
+    -- Сначала ищем UpperTorso
+    local upperTorso = char:FindFirstChild("UpperTorso")
+    if upperTorso then
+        return upperTorso
+    end
+
+    -- Если UpperTorso нет, перебираем другие части из TargetParts
+    for _, partName in ipairs(SilentAim.TargetParts) do
+        if partName == "HumanoidRootPart" then continue end -- Пропускаем HumanoidRootPart
+        if partName == "UpperLegs" or partName == "LowerLegs" or partName == "Legs" then
+            local combinedPart = GetCombinedPart(char, partName)
+            if combinedPart then
+                return combinedPart
+            end
+        else
+            local part = char:FindFirstChild(partName)
+            if part then
+                return part
+            end
+        end
+    end
+
+    -- Если ничего не нашли, возвращаем nil
+    return nil
+end
+
+local function applyDesyncStomp()
+    if not SilentAim.DesyncStomp.Enabled or not Check() then
+        if isDesyncActive then cleanupDesync() end
+        return
+    end
+
+    local targetPlayer = SilentAim.Selected
+    if not targetPlayer or not targetPlayer.Parent or not targetPlayer:IsDescendantOf(Players) then
+        if isDesyncActive then cleanupDesync() end
+        return
+    end
+
+    local char = targetPlayer.Character
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) then
+        if isDesyncActive then cleanupDesync() end
+        return
+    end
+
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    local ko = bodyEffects and bodyEffects:FindFirstChild("K.O")
+    if not ko or not ko.Value then
+        if isDesyncActive then cleanupDesync() end
+        return
+    end
+
+    -- Ищем подходящую часть тела для ragdoll
+    local ragdollPart = GetRagdollPart(char)
+    if not ragdollPart then
+        if isDesyncActive then cleanupDesync() end
+        return
+    end
+
+    -- Мониторинг состояния K.O.
+    MonitorKOState(targetPlayer)
+
+    -- Проверяем, был ли desync уже применен к этой цели в текущем K.O.
+    if not desyncAppliedToTarget[targetPlayer] then
+        -- Если desync еще не применялся в текущем K.O., помечаем цель и запускаем desync
+        desyncAppliedToTarget[targetPlayer] = true
+        if not isDesyncActive then
+            setupDesync()
+        end
+    end
+
+    if isDesyncActive then
+        -- Используем текущую позицию найденной части тела (например, UpperTorso)
+        local currentTargetPosition = ragdollPart.Position
+        local originalCFrame = HRP.CFrame
+        local newCFrame = CFrame.new(currentTargetPosition + Vector3.new(0, SilentAim.DesyncStomp.YOffset, 0))
+
+        followPart.CFrame = originalCFrame + Vector3.new(0, 1.5, 0)
+        Camera.CameraSubject = followPart
+
+        HRP.CFrame = newCFrame
+        RunService.RenderStepped:Wait()
+        HRP.CFrame = originalCFrame
+
+        if desyncBoxESP then
+            updateBoxESP(desyncBoxESP, newCFrame.Position)
+        end
+
+        if lastStompTime and (tick() - lastStompTime) >= SilentAim.DesyncStomp.StompInterval and stompCounter > 0 then
+            performStomp()
+        end
+    end
+end
+
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     
@@ -811,23 +1242,53 @@ UserInputService.InputBegan:Connect(function(input, gpe)
             SilentAim.ResolverMode = "Velocity"
             warn("Resolver Mode: Velocity")
         end
+    elseif input.KeyCode == SilentAim.DesyncStomp.ToggleKeybind then
+        -- Переключаем состояние DesyncStomp
+        SilentAim.DesyncStomp.Enabled = not SilentAim.DesyncStomp.Enabled
+        warn("Desync Stomp: " .. (SilentAim.DesyncStomp.Enabled and "Enabled" or "Disabled"))
+        
+        -- Обновляем текст индикатора
+        if SilentAim.IndicatorEnabled and Indicators.DesyncStompStatus then
+            Indicators.DesyncStompStatus.TextLabel.Text = "Autostomp: " .. (SilentAim.DesyncStomp.Enabled and "Enabled" or "Disabled")
+        end
+        
+        -- Если DesyncStomp выключен, сбрасываем все связанные данные
+        if not SilentAim.DesyncStomp.Enabled then
+            -- Сбрасываем флаги desyncAppliedToTarget
+            desyncAppliedToTarget = {}
+            -- Вызываем cleanupDesync, чтобы завершить текущий desync
+            if isDesyncActive then
+                cleanupDesync()
+            end
+            -- Убедимся, что все переменные сброшены
+            isDesyncActive = false
+            followPart = nil
+            desyncBoxESP = nil
+            stompCounter = 0
+            lastStompTime = nil
+            warn("[DEBUG] Desync Stomp data reset")
+        end
     end
 end)
 
---[[ Track Player Respawn ]]
 Players.PlayerAdded:Connect(function(player)
     if SilentAim.KeepTargetOnDeath and SilentAim.PreviousTarget == player and SilentAim.ReacquisitionMode == "Immediate" then
-        player.CharacterAdded:Connect(function(char)
-            SilentAim.Selected = player
-            SilentAim.SelectedPart = ClosestPart(char)
-            if SilentAim.SelectedPart then
-                MonitorDamage()
-            end
-        end)
+        if player.Parent and player:IsDescendantOf(Players) then
+            player.CharacterAdded:Connect(function(char)
+                if not player or not player.Parent or not player:IsDescendantOf(Players) then
+                    return
+                end
+                SilentAim.Selected = player
+                SilentAim.SelectedPart = ClosestPart(char)
+                if SilentAim.SelectedPart then
+                    MonitorDamage()
+                end
+            end)
+        end
     end
 end)
 
---[[ Reset Target on Player Leave ]]
+-- Обрабатываем уход игрока
 Players.PlayerRemoving:Connect(function(player)
     if SilentAim.Selected == player or SilentAim.PreviousTarget == player then
         SilentAim.Selected = nil
@@ -837,11 +1298,77 @@ Players.PlayerRemoving:Connect(function(player)
             healthConnection:Disconnect()
             healthConnection = nil
         end
+        -- Очищаем данные desync и K.O. для удаленного игрока
+        desyncAppliedToTarget[player] = nil
+        if targetKOStates[player] and targetKOStates[player].connection then
+            targetKOStates[player].connection:Disconnect()
+        end
+        targetKOStates[player] = nil
         ReacquireTarget()
     end
 end)
 
---[[ Mouse.Hit / Mouse.Target Hook ]]
+-- Обрабатываем смерть и возрождение цели
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function(char)
+            -- При возрождении игрока сбрасываем флаг desyncAppliedToTarget
+            if desyncAppliedToTarget[player] then
+                desyncAppliedToTarget[player] = nil
+                local targetName = pcall(function() return player.Name end) and player.Name or "Unknown"
+                warn("[DEBUG] Target " .. targetName .. " respawned, desync flag reset")
+            end
+            -- Очищаем старый мониторинг K.O.
+            if targetKOStates[player] and targetKOStates[player].connection then
+                targetKOStates[player].connection:Disconnect()
+            end
+            targetKOStates[player] = nil
+            -- Если это текущая цель, обновляем данные
+            if SilentAim.Selected == player then
+                SilentAim.SelectedPart = ClosestPart(char)
+                if SilentAim.SelectedPart then
+                    MonitorDamage()
+                end
+            end
+        end)
+    end
+end
+
+-- Обрабатываем подключение новых игроков
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function(char)
+            -- При возрождении игрока сбрасываем флаг desyncAppliedToTarget
+            if desyncAppliedToTarget[player] then
+                desyncAppliedToTarget[player] = nil
+                local targetName = pcall(function() return player.Name end) and player.Name or "Unknown"
+                warn("[DEBUG] Target " .. targetName .. " respawned, desync flag reset")
+            end
+            -- Очищаем старый мониторинг K.O.
+            if targetKOStates[player] and targetKOStates[player].connection then
+                targetKOStates[player].connection:Disconnect()
+            end
+            targetKOStates[player] = nil
+            -- Если это текущая цель, обновляем данные
+            if SilentAim.Selected == player then
+                SilentAim.SelectedPart = ClosestPart(char)
+                if SilentAim.SelectedPart then
+                    MonitorDamage()
+                end
+            end
+        end)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(newCharacter)
+    Char = newCharacter
+    HRP = Char:WaitForChild("HumanoidRootPart")
+    Humanoid = Char:WaitForChild("Humanoid")
+    if isDesyncActive then
+        setupDesync()
+    end
+end)
+
 local __index
 __index = hookmetamethod(game, "__index", function(t, k)
     if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
@@ -859,14 +1386,13 @@ __index = hookmetamethod(game, "__index", function(t, k)
     return __index(t, k)
 end)
 
---[[ Heartbeat Update ]]
 RunService.Heartbeat:Connect(function()
     UpdateTracer()
     UpdateTargetSelection()
     UpdateIndicators()
+    applyDesyncStomp()
 end)
 
---[[ Cleanup on Exit ]]
 game:BindToClose(function()
     if Beam then Beam:Destroy() end
     if StartAttachment then StartAttachment:Destroy() end
@@ -880,10 +1406,24 @@ game:BindToClose(function()
         gradientAnimationConnection:Disconnect()
         gradientAnimationConnection = nil
     end
+    cleanupDesync()
+    -- Очищаем все соединения K.O.
+    for player, data in pairs(targetKOStates) do
+        if data and data.connection then
+            data.connection:Disconnect()
+        end
+    end
+    targetKOStates = {}
+    desyncAppliedToTarget = {}
 end)
 
-warn("Enhanced Silent Aim with Multi-Config Prediction loaded successfully!")
+warn("Enhanced Silent Aim with Desync Stomp and 3D Box ESP loaded successfully!")
 warn("Multi-Config Prediction: " .. (SilentAim.MultiConfigPredictionEnabled and "Enabled" or "Disabled"))
 warn("Reacquisition Mode: " .. SilentAim.ReacquisitionMode)
 warn("Resolver Mode: " .. SilentAim.ResolverMode)
+warn("Desync Stomp: " .. (SilentAim.DesyncStomp.Enabled and "Enabled" or "Disabled"))
+warn("Stomp Count: " .. tostring(SilentAim.DesyncStomp.StompCount))
+warn("Stomp Interval: " .. tostring(SilentAim.DesyncStomp.StompInterval) .. " seconds")
+warn("Unequip Weapon During Desync: " .. (SilentAim.DesyncStomp.UnequipWeaponDuringDesync and "Enabled" or "Disabled"))
 warn("Press " .. tostring(SilentAim.ResolverKeybind) .. " to switch resolver modes")
+warn("Press " .. tostring(SilentAim.DesyncStomp.ToggleKeybind) .. " to toggle Desync Stomp")
