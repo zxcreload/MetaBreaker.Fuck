@@ -1,27 +1,51 @@
--- Load the main Obsidian UI Library
+-- Services
+local game = game
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local SoundService = game:GetService("SoundService")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+local TextService = game:GetService("TextService")
+local Teams = game:GetService("Teams")
+local MarketplaceService = game:GetService("MarketplaceService")
+local ContextActionService = game:GetService("ContextActionService")
+
+-- Adonis Anti-Cheat Bypass
+for _, v in pairs(getgc(true)) do
+    if type(v) == "table" then
+        setreadonly(v, false)
+        if type(rawget(v, "indexInstance")) == "table" and rawget(v, "indexInstance")[1] == "kick" then
+            setreadonly(rawget(v, "indexInstance"), false)
+            rawset(v, "Table", {"kick", function() coroutine.yield() end})
+            warn("\n---[ INFO ]---\nBypassed Adonis Anti-Cheat/Anti-Exploit.\nMethod: Prevented Script Table Communication With Server.")
+            break
+        end
+    end
+end
+
+-- Load the main Obsidian UI Library with error handling
 local success, Library = pcall(function()
     return loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
 end)
-if not success then
-    error("Failed to load Obsidian UI Library: " .. tostring(Library))
+if not success or not Library then
+    warn("Failed to load Obsidian UI Library: " .. (Library or "Unknown error"))
+    return
 end
 
 -- Load SaveManager and ThemeManager with error handling
-local SaveManager, ThemeManager
-local successSave, saveErr = pcall(function()
-    SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/SaveManager.lua"))()
-end)
-if not successSave then
-    warn("Failed to load SaveManager: " .. tostring(saveErr))
-    SaveManager = nil
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/SaveManager.lua"))() or nil
+if not SaveManager then
+    warn("Failed to load SaveManager")
 end
 
-local successTheme, themeErr = pcall(function()
-    ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/ThemeManager.lua"))()
-end)
-if not successTheme then
-    warn("Failed to load ThemeManager: " .. tostring(themeErr))
-    ThemeManager = nil
+local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/ThemeManager.lua"))() or nil
+if not ThemeManager then
+    warn("Failed to load ThemeManager")
 end
 
 -- Disable custom cursor
@@ -47,10 +71,10 @@ local ConfigTab = Window:AddTab("Config", "settings")
 
 -- Initialize SaveManager if loaded
 if SaveManager then
-    SaveManager:SetLibrary(Library) -- Link SaveManager to the Library
-    SaveManager:IgnoreThemeSettings() -- Prevent saving theme settings (optional)
-    SaveManager:SetFolder("metaBreakerConfigs") -- Set the folder for config files
-    SaveManager:SetSubFolder("settings") -- Optional: Organize configs in a subfolder
+    SaveManager:SetLibrary(Library)
+    SaveManager:IgnoreThemeSettings()
+    SaveManager:SetFolder("metaBreakerConfigs")
+    SaveManager:SetSubFolder("settings")
 else
     Library:Notify({
         Title = "Error",
@@ -61,8 +85,8 @@ end
 
 -- Initialize ThemeManager if loaded
 if ThemeManager then
-    ThemeManager:SetLibrary(Library) -- Link ThemeManager to the Library
-    ThemeManager:SetFolder("metaBreakerThemes") -- Set the folder for theme files
+    ThemeManager:SetLibrary(Library)
+    ThemeManager:SetFolder("metaBreakerThemes")
 else
     Library:Notify({
         Title = "Error",
@@ -72,28 +96,890 @@ else
 end
 
 -- Build Configuration Section in Config Tab
--- Pass the ConfigTab (a tab) instead of ConfigGroupbox (a groupbox)
 if SaveManager then
     SaveManager:BuildConfigSection(ConfigTab)
 end
 
--- Add ThemeManager UI elements (Theme selection) to the ConfigTab
+-- Add ThemeManager UI elements to the ConfigTab
 if ThemeManager then
     ThemeManager:ApplyToTab(ConfigTab)
 end
 
+-- Silent Aim Settings
+getgenv().SilentAim = {
+    Enabled = false,
+    TracerEnabled = false,
+    TracerColor = Color3.fromRGB(128, 0, 128),
+    TracerThickness = 0.2,
+    MultiConfigPredictionEnabled = false,
+    DefaultPrediction = 0.161123123,
+    PredictionConfigs = {
+        {Distance = 50, PredictionXZ = 0.12, PredictionY = 0.12},
+        {Distance = 100, PredictionXZ = 0.14, PredictionY = 0.14},
+        {Distance = 1000, PredictionXZ = 0.16, PredictionY = 0.16},
+        {Distance = 10000, PredictionXZ = 0.18, PredictionY = 0.18}
+    },
+    TargetParts = {
+        "HumanoidRootPart", "UpperTorso", "LowerTorso", "Head",
+        "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+        "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg",
+        "UpperLegs", "LowerLegs", "Legs"
+    },
+    DefaultAimPart = "HumanoidRootPart",
+    JumpAimPart = "UpperLegs",
+    VisibleCheck = true,
+    Keybind = Enum.KeyCode.Q,
+    IgnoreRagdoll = false,
+    IgnoreGrabbed = false,
+    WallCheck = false,
+    TargetSelectionMode = "Keybind",
+    Whitelist = {"ExamplePlayer", "Friend", "Admin"},
+    WhitelistEnabled = false,
+    ReacquisitionMode = "Immediate",
+    PriorityList = {"Enemy1", "Enemy2", "Enemy3"},
+    KeepTargetOnDeath = true,
+    ResolverEnabled = false, -- Added Resolver Toggle
+    ResolverMode = "Velocity",
+    ResolverKeybind = Enum.KeyCode.J
+}
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local SilentAim = getgenv().SilentAim
+local Camera = Workspace.CurrentCamera
+
+-- Initialize character
+local Char, HRP, Humanoid
+local timeout = 10
+local startTime = tick()
+while not LocalPlayer.Character and (tick() - startTime) < timeout do
+    LocalPlayer.CharacterAdded:Wait()
+end
+Char = LocalPlayer.Character or error("Failed to load LocalPlayer.Character after " .. timeout .. " seconds")
+HRP = Char:WaitForChild("HumanoidRootPart", 5) or error("HumanoidRootPart not found")
+Humanoid = Char:WaitForChild("Humanoid", 5) or error("Humanoid not found")
+
+-- Aim variables
+SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+local lastPosition, lastUpdateTime = nil, nil
+
+-- Tracer setup
+local Beam, StartAttachment, EndAttachment
+
+local function InitBeam()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+
+    StartAttachment = Instance.new("Attachment")
+    EndAttachment = Instance.new("Attachment")
+    Beam = Instance.new("Beam")
+    Beam.Color = ColorSequence.new(SilentAim.TracerColor)
+    Beam.Width0 = SilentAim.TracerThickness
+    Beam.Width1 = SilentAim.TracerThickness
+    Beam.Transparency = NumberSequence.new(0)
+    Beam.Attachment0 = StartAttachment
+    Beam.Attachment1 = EndAttachment
+    Beam.Enabled = SilentAim.TracerEnabled
+    Beam.Parent = Workspace
+end
+
+InitBeam()
+
+-- Rapid Fire Variables
+local firing = false
+local debounce = false
+local minFireDelay = 0.05
+local rapidFireEnabled = false
+local rapidFireMode = "Rage"
+
+-- Combat UI Elements
+
+-- Groupbox 1: General Aimbot Settings (Left)
+local GeneralGroupbox = CombatTab:AddLeftGroupbox("General Aimbot")
+local AimbotToggle = GeneralGroupbox:AddToggle("AimbotEnabled", {
+    Text = "Enable Aimbot",
+    Default = SilentAim.Enabled,
+    Tooltip = "Toggles the aimbot functionality",
+    Callback = function(Value)
+        SilentAim.Enabled = Value
+        Library:Notify({
+            Title = "Aimbot",
+            Description = "Aimbot " .. (Value and "enabled" or "disabled"),
+            Time = 3
+        })
+    end
+})
+
+local TargetKeybind = AimbotToggle:AddKeyPicker("TargetKeybind", {
+    Default = tostring(SilentAim.Keybind):match("Enum%.KeyCode%.(.+)") or "Q",
+    Text = "Target Selection Key",
+    Mode = "Toggle",
+    Tooltip = "Key to select/deselect target",
+    Callback = function(Value)
+        -- Handled in InputBegan
+    end
+})
+
+GeneralGroupbox:AddDropdown("DefaultAimPart", {
+    Text = "Default Aim Part",
+    Values = SilentAim.TargetParts,
+    Default = SilentAim.DefaultAimPart,
+    Tooltip = "Body part to aim at by default",
+    Callback = function(Value)
+        SilentAim.DefaultAimPart = Value
+        Library:Notify({
+            Title = "Default Aim Part",
+            Description = "Set to " .. Value,
+            Time = 3
+        })
+    end
+})
+
+GeneralGroupbox:AddDropdown("JumpAimPart", {
+    Text = "Jump Aim Part",
+    Values = {"UpperLegs", "LowerLegs", "Legs", "Head", "UpperTorso"},
+    Default = SilentAim.JumpAimPart,
+    Tooltip = "Body part to aim at when enemy is jumping",
+    Callback = function(Value)
+        SilentAim.JumpAimPart = Value
+        Library:Notify({
+            Title = "Jump Aim Part",
+            Description = "Set to " .. Value,
+            Time = 3
+        })
+    end
+})
+
+-- Groupbox 2: Resolver Settings (Left)
+local ResolverGroupbox = CombatTab:AddLeftGroupbox("Resolver Settings")
+local ResolverToggle = ResolverGroupbox:AddToggle("ResolverEnabled", {
+    Text = "Enable Resolver",
+    Default = SilentAim.ResolverEnabled,
+    Tooltip = "Toggles the resolver functionality",
+    Callback = function(Value)
+        SilentAim.ResolverEnabled = Value
+        Library:Notify({
+            Title = "Resolver",
+            Description = "Resolver " .. (Value and "enabled" or "disabled"),
+            Time = 3
+        })
+    end
+})
+
+local ResolverModeDropdown = ResolverGroupbox:AddDropdown("ResolverMode", {
+    Text = "Resolver Mode",
+    Values = {"Velocity", "MoveDirection", "CalculateCFrame"},
+    Default = SilentAim.ResolverMode,
+    Tooltip = "Selects the prediction method for aiming",
+    Callback = function(Value)
+        SilentAim.ResolverMode = Value
+        Library:Notify({
+            Title = "Resolver Mode",
+            Description = "Set to " .. Value,
+            Time = 3
+        })
+    end
+})
+
+-- Add KeyPicker to ResolverToggle
+local ResolverModeKeybind = ResolverToggle:AddKeyPicker("ResolverModeKeybind", {
+    Default = tostring(SilentAim.ResolverKeybind):match("Enum%.KeyCode%.(.+)") or "J",
+    Text = "Resolver Mode Key",
+    Mode = "Toggle",
+    Tooltip = "Key to cycle resolver modes",
+    Callback = function(Value)
+        -- Handled in InputBegan
+    end
+})
+
+ResolverGroupbox:AddInput("PredictionValue", {
+    Text = "Prediction Value",
+    Default = tostring(SilentAim.DefaultPrediction),
+    Numeric = true,
+    Placeholder = "Enter prediction value (e.g., 0.16)",
+    Tooltip = "Sets the default prediction value for aimbot",
+    Callback = function(Value)
+        local numValue = tonumber(Value)
+        if numValue and numValue >= 0 then
+            SilentAim.DefaultPrediction = numValue
+            Library:Notify({
+                Title = "Prediction",
+                Description = "Set to " .. numValue,
+                Time = 3
+            })
+        else
+            Library:Notify({
+                Title = "Prediction",
+                Description = "Invalid value, must be a positive number",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Groupbox 3: Aimbot Checks (Right)
+local ChecksGroupbox = CombatTab:AddRightGroupbox("Aimbot Checks")
+ChecksGroupbox:AddToggle("VisibleCheck", {
+    Text = "Visible Check",
+    Default = SilentAim.VisibleCheck,
+    Tooltip = "Only targets visible enemies",
+    Callback = function(Value)
+        SilentAim.VisibleCheck = Value
+        Library:Notify({
+            Title = "Visible Check",
+            Description = Value and "Enabled" or "Disabled",
+            Time = 3
+        })
+    end
+})
+
+ChecksGroupbox:AddToggle("IgnoreRagdoll", {
+    Text = "Ignore Ragdoll",
+    Default = SilentAim.IgnoreRagdoll,
+    Tooltip = "Ignores knocked-out enemies",
+    Callback = function(Value)
+        SilentAim.IgnoreRagdoll = Value
+        Library:Notify({
+            Title = "Ignore Ragdoll",
+            Description = Value and "Enabled" or "Disabled",
+            Time = 3
+        })
+    end
+})
+
+ChecksGroupbox:AddToggle("IgnoreGrabbed", {
+    Text = "Ignore Grabbed",
+    Default = SilentAim.IgnoreGrabbed,
+    Tooltip = "Ignores enemies being grabbed",
+    Callback = function(Value)
+        SilentAim.IgnoreGrabbed = Value
+        Library:Notify({
+            Title = "Ignore Grabbed",
+            Description = Value and "Enabled" or "Disabled",
+            Time = 3
+        })
+    end
+})
+
+ChecksGroupbox:AddToggle("WallCheck", {
+    Text = "Wall Check",
+    Default = SilentAim.WallCheck,
+    Tooltip = "Checks for walls between you and the target",
+    Callback = function(Value)
+        SilentAim.WallCheck = Value
+        Library:Notify({
+            Title = "Wall Check",
+            Description = Value and "Enabled" or "Disabled",
+            Time = 3
+        })
+    end
+})
+
+-- Groupbox 4: Tracer Settings (Right)
+local TracerGroupbox = CombatTab:AddRightGroupbox("Tracer Settings")
+local TracerToggle = TracerGroupbox:AddToggle("TracerEnabled", {
+    Text = "Enable Tracer",
+    Default = SilentAim.TracerEnabled,
+    Tooltip = "Toggles the tracer visibility",
+    Callback = function(Value)
+        SilentAim.TracerEnabled = Value
+        if not Beam then
+            InitBeam()
+        end
+        if Beam then
+            Beam.Enabled = Value and Check()
+        end
+        Library:Notify({
+            Title = "Tracer",
+            Description = "Tracer " .. (Value and "enabled" or "disabled"),
+            Time = 3
+        })
+    end
+})
+
+-- Add ColorPicker to TracerToggle
+local TracerColorPicker = TracerToggle:AddColorPicker("TracerColor", {
+    Default = SilentAim.TracerColor,
+    Title = "Tracer Color",
+    Transparency = 0,
+    Callback = function(Value)
+        SilentAim.TracerColor = Value
+        if Beam then
+            Beam.Color = ColorSequence.new(Value)
+        end
+        Library:Notify({
+            Title = "Tracer Color",
+            Description = "Color updated",
+            Time = 3
+        })
+    end
+})
+
+TracerGroupbox:AddSlider("TracerThickness", {
+    Text = "Tracer Thickness",
+    Default = SilentAim.TracerThickness,
+    Min = 0.1,
+    Max = 2.0,
+    Rounding = 1,
+    Suffix = " units",
+    Tooltip = "Adjust the thickness of the tracer",
+    Callback = function(Value)
+        SilentAim.TracerThickness = Value
+        if Beam then
+            Beam.Width0 = Value
+            Beam.Width1 = Value
+        end
+        Library:Notify({
+            Title = "Tracer Thickness",
+            Description = "Set to " .. Value .. " units",
+            Time = 3
+        })
+    end
+})
+
+-- Groupbox 5: Rapid Fire (Right)
+local RapidFireGroupbox = CombatTab:AddRightGroupbox("Rapid Fire")
+local RapidFireToggle = RapidFireGroupbox:AddToggle("RapidFireEnabled", {
+    Text = "Enable Rapid Fire",
+    Default = false,
+    Tooltip = "Toggles rapid fire functionality",
+    Callback = function(Value)
+        rapidFireEnabled = Value
+        Library:Notify({
+            Title = "Rapid Fire",
+            Description = "Rapid Fire " .. (Value and "enabled" or "disabled"),
+            Time = 3
+        })
+    end
+})
+
+local RapidFireModeDropdown = RapidFireGroupbox:AddDropdown("RapidFireMode", {
+    Text = "Rapid Fire Mode",
+    Values = {"Legit", "Rage"},
+    Default = "Rage",
+    Tooltip = "Selects the rapid fire mode",
+    Callback = function(Value)
+        rapidFireMode = Value
+        Library:Notify({
+            Title = "Rapid Fire Mode",
+            Description = "Set to " .. Value,
+            Time = 3
+        })
+    end
+})
+
+local RapidFireDelayTextbox = RapidFireGroupbox:AddInput("RapidFireDelay", {
+    Text = "Rapid Fire Delay",
+    Default = "0.05",
+    Numeric = true,
+    Placeholder = "Enter delay (e.g., 0.05)",
+    Tooltip = "Sets the delay between shots for rapid fire",
+    Callback = function(Value)
+        local numValue = tonumber(Value)
+        if numValue and numValue >= 0 then
+            minFireDelay = numValue
+            Library:Notify({
+                Title = "Rapid Fire Delay",
+                Description = "Set to " .. numValue,
+                Time = 3
+            })
+        else
+            Library:Notify({
+                Title = "Rapid Fire Delay",
+                Description = "Invalid value, must be a positive number",
+                Time = 3
+            })
+        end
+    end
+})
+
+-- Aimbot Functions
+local function GetPredictionForDistance(distance)
+    if not SilentAim.MultiConfigPredictionEnabled then
+        return SilentAim.DefaultPrediction, SilentAim.DefaultPrediction
+    end
+    local selectedConfig = SilentAim.PredictionConfigs[1]
+    for _, config in ipairs(SilentAim.PredictionConfigs) do
+        if distance <= config.Distance then
+            selectedConfig = config
+            break
+        end
+    end
+    return selectedConfig.PredictionXZ, selectedConfig.PredictionY
+end
+
+local function getPredictedPosition(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then return nil end
+    local aimPart = SilentAim.SelectedPart or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not aimPart then return nil end
+    local aimPartPos = aimPart.Position
+    if not lastPosition or not lastUpdateTime then
+        lastPosition = aimPartPos
+        lastUpdateTime = tick()
+        return aimPartPos
+    end
+    local currentTime = tick()
+    local deltaTime = currentTime - lastUpdateTime
+    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local distance = localRoot and (localRoot.Position - aimPartPos).Magnitude or math.huge
+    local predictionXZ, predictionY = GetPredictionForDistance(distance)
+    if SilentAim.ResolverMode == "Velocity" then
+        local velocity = aimPart.Velocity
+        return aimPartPos + Vector3.new(velocity.X * predictionXZ, velocity.Y * predictionY, velocity.Z * predictionXZ)
+    elseif SilentAim.ResolverMode == "MoveDirection" then
+        return aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (predictionXZ * 10))
+    elseif SilentAim.ResolverMode == "CalculateCFrame" then
+        if (aimPartPos - lastPosition).Magnitude < 0.001 then
+            return aimPartPos
+        else
+            local distance = (aimPartPos - lastPosition).Magnitude
+            local predictedDistance = (distance / deltaTime) * (0.1 * (predictionXZ * 10))
+            local predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
+            local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * predictionY)
+            predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
+            lastUpdateTime = currentTime
+            lastPosition = aimPartPos
+            return predictedPosition
+        end
+    end
+    return nil
+end
+
+local function IsPartVisible(part, char)
+    if not part or not char or not Camera then return false end
+    local origin = Camera.CFrame.Position
+    local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+    if onScreen then
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+        local result = Workspace:Raycast(origin, part.Position - origin, rayParams)
+        return not result or result.Instance:IsDescendantOf(char)
+    end
+    return false
+end
+
+local function IsWhitelisted(player)
+    if not SilentAim.WhitelistEnabled then return true end
+    for _, namePart in ipairs(SilentAim.Whitelist) do
+        if string.find(player.Name:lower(), namePart:lower(), 1, true) then return true end
+    end
+    return false
+end
+
+local function GetCombinedPart(char, partType)
+    if not char then return nil end
+    local leftPart, rightPart
+    if partType == "UpperLegs" then
+        leftPart = char:FindFirstChild("LeftUpperLeg")
+        rightPart = char:FindFirstChild("RightUpperLeg")
+    elseif partType == "LowerLegs" then
+        leftPart = char:FindFirstChild("LeftLowerLeg")
+        rightPart = char:FindFirstChild("RightLowerLeg")
+    elseif partType == "Legs" then
+        leftPart = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("LeftLowerLeg")
+        rightPart = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("RightLowerLeg")
+    end
+    if not leftPart or not rightPart then return nil end
+    local combinedPart = Instance.new("Part")
+    combinedPart.Size = Vector3.new(0.1, 0.1, 0.1)
+    combinedPart.Transparency = 1
+    combinedPart.CanCollide = false
+    combinedPart.Anchored = true
+    combinedPart.Position = (leftPart.Position + rightPart.Position) / 2
+    combinedPart.Velocity = (leftPart.Velocity + rightPart.Velocity) / 2
+    return combinedPart
+end
+
+local function ClosestPart(char)
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) or not char:FindFirstChild("Humanoid") or not Camera then return nil end
+    local isJumping = char.Humanoid:GetState() == Enum.HumanoidStateType.Jumping
+    if isJumping and SilentAim.JumpAimPart then
+        local jumpPart = char:FindFirstChild(SilentAim.JumpAimPart) or (SilentAim.JumpAimPart:find("Legs") and GetCombinedPart(char, SilentAim.JumpAimPart))
+        if jumpPart and (not SilentAim.WallCheck or IsPartVisible(jumpPart, char)) then
+            local _, onScreen = Camera:WorldToViewportPoint(jumpPart.Position)
+            if onScreen then return jumpPart end
+        end
+    end
+    local defaultPart = char:FindFirstChild(SilentAim.DefaultAimPart) or (SilentAim.DefaultAimPart:find("Legs") and GetCombinedPart(char, SilentAim.DefaultAimPart))
+    if defaultPart and (not SilentAim.WallCheck or IsPartVisible(defaultPart, char)) then
+        local _, onScreen = Camera:WorldToViewportPoint(defaultPart.Position)
+        if onScreen then return defaultPart end
+    end
+    for _, partName in ipairs(SilentAim.TargetParts) do
+        if not char.Parent or not char:IsDescendantOf(Workspace) then return nil end
+        local part = char:FindFirstChild(partName) or (partName:find("Legs") and GetCombinedPart(char, partName))
+        if part and (not SilentAim.WallCheck or IsPartVisible(part, char)) then
+            local _, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen then return part end
+        end
+    end
+    return nil
+end
+
+local function ReacquireTarget()
+    if not SilentAim.KeepTargetOnDeath then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        return
+    end
+    if SilentAim.ReacquisitionMode == "Immediate" then
+        if SilentAim.PreviousTarget and SilentAim.PreviousTarget.Parent and SilentAim.PreviousTarget:IsDescendantOf(Players) then
+            local player = SilentAim.PreviousTarget
+            if player.Character and player.Character.Parent and player.Character:IsDescendantOf(Workspace) then
+                SilentAim.Selected = player
+                SilentAim.SelectedPart = ClosestPart(player.Character)
+            else
+                local connection
+                connection = player.CharacterAdded:Connect(function(char)
+                    if not player or not player.Parent or not player:IsDescendantOf(Players) then
+                        connection:Disconnect()
+                        return
+                    end
+                    SilentAim.Selected = player
+                    SilentAim.SelectedPart = ClosestPart(char)
+                    connection:Disconnect()
+                end)
+            end
+        else
+            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+        end
+    elseif SilentAim.ReacquisitionMode == "Nearest" then
+        GetClosest()
+        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+            SilentAim.PreviousTarget = SilentAim.Selected
+        end
+    elseif SilentAim.ReacquisitionMode == "Priority" then
+        for _, playerName in ipairs(SilentAim.PriorityList) do
+            local player = Players:FindFirstChild(playerName)
+            if player and player ~= LocalPlayer and player.Character and IsWhitelisted(player) then
+                local part = ClosestPart(player.Character)
+                if part and (not SilentAim.VisibleCheck or IsPartVisible(part, player.Character)) then
+                    SilentAim.Selected = player
+                    SilentAim.SelectedPart = part
+                    SilentAim.PreviousTarget = player
+                    return
+                end
+            end
+        end
+        GetClosest()
+        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+            SilentAim.PreviousTarget = SilentAim.Selected
+        end
+    end
+end
+
+local function Check()
+    if not (SilentAim.Enabled and SilentAim.Selected and SilentAim.Selected ~= LocalPlayer) then return false end
+    if not SilentAim.Selected.Parent or not SilentAim.Selected:IsDescendantOf(Players) then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return false
+    end
+    local char = SilentAim.Selected.Character
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) or not char:FindFirstChild("Humanoid") then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return false
+    end
+    if not SilentAim.KeepTargetOnDeath and char.Humanoid.Health <= 0 then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return false
+    end
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    if not bodyEffects or not bodyEffects:FindFirstChild("K.O") then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return false
+    end
+    local koValue = bodyEffects["K.O"].Value
+    local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
+    if (SilentAim.IgnoreRagdoll and koValue) or (SilentAim.IgnoreGrabbed and grabbed) then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return false
+    end
+    if not SilentAim.SelectedPart or not SilentAim.SelectedPart.Parent or not SilentAim.SelectedPart:IsDescendantOf(char) then
+        SilentAim.SelectedPart = ClosestPart(char)
+        if not SilentAim.SelectedPart then
+            SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+            ReacquireTarget()
+            return false
+        end
+    end
+    return true
+end
+
+local function GetClosest()
+    local closest, shortest, targetPart = nil, math.huge, nil
+    if not Camera then
+        SilentAim.Selected, SilentAim.SelectedPart = LocalPlayer, nil
+        return
+    end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer or not IsWhitelisted(plr) or not plr.Parent or not plr:IsDescendantOf(Players) then continue end
+        local char = plr.Character
+        if char and char.Parent and char:IsDescendantOf(Workspace) and char:FindFirstChild("Humanoid") then
+            local part = ClosestPart(char)
+            if part then
+                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                if not onScreen then continue end
+                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                if dist < shortest and (not SilentAim.VisibleCheck or IsPartVisible(part, char)) then
+                    closest = plr
+                    targetPart = part
+                    shortest = dist
+                end
+            end
+        end
+    end
+    SilentAim.Selected = closest or LocalPlayer
+    SilentAim.SelectedPart = targetPart
+    if closest then SilentAim.PreviousTarget = closest end
+end
+
+local function UpdateTracer()
+    if not Beam then
+        InitBeam()
+    end
+    if Beam then
+        Beam.Enabled = SilentAim.TracerEnabled and Check()
+    end
+    if not SilentAim.TracerEnabled or not Check() then return end
+    local lChar = LocalPlayer.Character
+    if not lChar or not lChar:FindFirstChild("Head") then return end
+    local tChar = SilentAim.Selected and SilentAim.Selected.Character
+    if not tChar or not tChar.Parent or not tChar:IsDescendantOf(Workspace) then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return
+    end
+    local tPart = SilentAim.SelectedPart
+    if not tPart or not tPart.Parent or not tPart:IsDescendantOf(tChar) then
+        SilentAim.SelectedPart = ClosestPart(tChar)
+        if not SilentAim.SelectedPart then
+            SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+            ReacquireTarget()
+            return
+        end
+        tPart = SilentAim.SelectedPart
+    end
+    local predictedPos = getPredictedPosition(SilentAim.Selected) or tPart.Position
+    StartAttachment.Parent = lChar.Head
+    EndAttachment.Parent = tPart
+    StartAttachment.WorldPosition = lChar.Head.Position
+    EndAttachment.WorldPosition = predictedPos
+end
+
+local function UpdateTargetSelection()
+    if SilentAim.TargetSelectionMode == "Auto" then
+        GetClosest()
+        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+            SilentAim.PreviousTarget = SilentAim.Selected
+        end
+    end
+end
+
+-- Rapid Fire Functions
+local function safeActivate(tool)
+    if not debounce and tool and tool:IsA("Tool") then
+        debounce = true
+        pcall(function()
+            tool:Activate()
+        end)
+        task.wait(minFireDelay)
+        debounce = false
+    end
+end
+
+local function fireLoop()
+    while firing and rapidFireEnabled do
+        local character = LocalPlayer.Character
+        if character then
+            local tool = character:FindFirstChildOfClass("Tool")
+            if rapidFireMode == "Rage" then
+                safeActivate(tool)
+            elseif rapidFireMode == "Legit" then
+                -- Placeholder for Legit mode (e.g., slower firing rate)
+                safeActivate(tool)
+                task.wait(minFireDelay * 2) -- Example adjustment for Legit mode
+            end
+        end
+        RunService.Heartbeat:Wait()
+    end
+end
+
+-- Input Handling
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == SilentAim.Keybind and SilentAim.TargetSelectionMode == "Keybind" then
+        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = LocalPlayer, nil, nil
+            Library:Notify({
+                Title = "Aimbot",
+                Description = "Target deselected",
+                Time = 3
+            })
+        else
+            GetClosest()
+            if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
+                SilentAim.PreviousTarget = SilentAim.Selected
+                Library:Notify({
+                    Title = "Aimbot",
+                    Description = "Target selected: " .. SilentAim.Selected.Name,
+                    Time = 3
+                })
+            end
+        end
+    elseif input.KeyCode == SilentAim.ResolverKeybind and SilentAim.ResolverEnabled then
+        SilentAim.ResolverMode = SilentAim.ResolverMode == "Velocity" and "MoveDirection" or SilentAim.ResolverMode == "MoveDirection" and "CalculateCFrame" or "Velocity"
+        ResolverModeDropdown:SetValue(SilentAim.ResolverMode)
+        Library:Notify({
+            Title = "Resolver Mode",
+            Description = "Set to " .. SilentAim.ResolverMode,
+            Time = 3
+        })
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1 and rapidFireEnabled then
+        firing = true
+        fireLoop()
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        firing = false
+    end
+end)
+
+-- Update Keybind using OnChanged
+TargetKeybind:OnChanged(function()
+    local key = TargetKeybind:GetValue().key
+    SilentAim.Keybind = Enum.KeyCode[key] or Enum.KeyCode.Q
+    Library:Notify({
+        Title = "Target Keybind",
+        Description = "Set to " .. (key or "None"),
+        Time = 3
+    })
+end)
+
+-- Player Events
+Players.PlayerAdded:Connect(function(player)
+    if SilentAim.KeepTargetOnDeath and SilentAim.PreviousTarget == player and SilentAim.ReacquisitionMode == "Immediate" then
+        if player.Parent and player:IsDescendantOf(Players) then
+            player.CharacterAdded:Connect(function(char)
+                if not player or not player.Parent or not player:IsDescendantOf(Players) then return end
+                SilentAim.Selected = player
+                SilentAim.SelectedPart = ClosestPart(char)
+            end)
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if SilentAim.Selected == player or SilentAim.PreviousTarget == player then
+        SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+        ReacquireTarget()
+    end
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function(char)
+            if SilentAim.Selected == player then
+                SilentAim.SelectedPart = ClosestPart(char)
+            end
+        end)
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function(char)
+            if SilentAim.Selected == player then
+                SilentAim.SelectedPart = ClosestPart(char)
+            end
+        end)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(newCharacter)
+    Char = newCharacter
+    HRP = Char:WaitForChild("HumanoidRootPart", 5) or error("HumanoidRootPart not found")
+    Humanoid = Char:WaitForChild("Humanoid", 5) or error("Humanoid not found")
+    setupCharacter(newCharacter)
+end)
+
+-- Setup Character for Rapid Fire
+local function setupCharacter(character)
+    character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            child.Activated:Connect(function()
+                if firing and rapidFireEnabled then
+                    safeActivate(child)
+                end
+            end)
+        end
+    end)
+end
+
+if LocalPlayer.Character then
+    setupCharacter(LocalPlayer.Character)
+end
+
+-- Mouse Hook with explicit if-else
+local __index
+__index = hookmetamethod(game, "__index", function(t, k)
+    if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
+        if not Check() then
+            return __index(t, k)
+        end
+        local selPart = SilentAim.SelectedPart
+        if selPart then
+            local predictedPos = getPredictedPosition(SilentAim.Selected)
+            if predictedPos then
+                if k == "Hit" then
+                    return CFrame.new(predictedPos)
+                else
+                    return selPart
+                end
+            else
+                return __index(t, k) -- Fallback if prediction fails
+            end
+        end
+    end
+    return __index(t, k)
+end)
+
+-- Main Loop
+RunService.Heartbeat:Connect(function()
+    UpdateTracer()
+    UpdateTargetSelection()
+end)
+
+-- Cleanup
+game:BindToClose(function()
+    if Beam then Beam:Destroy() end
+    if StartAttachment then StartAttachment:Destroy() end
+    if EndAttachment then EndAttachment:Destroy() end
+    Library:Unload()
+end)
 
 -- Register UI elements with SaveManager and load autoload config
 if SaveManager then
-    SaveManager:LoadAutoloadConfig() -- Load the last saved config on startup (optional)
+    SaveManager:LoadAutoloadConfig()
 end
 
 -- Notify user that the UI is loaded
 Library:Notify({
     Title = "metaBreaker.lua",
-    Description = "UI Loaded Successfully!",
+    Description = "UI and Aimbot Loaded Successfully!",
     Time = 3
 })
 
 -- Show the UI
 Library:Toggle(true)
+
+warn("metaBreaker.lua with Aimbot and Rapid Fire loaded successfully!")
+warn("Resolver Mode: " .. SilentAim.ResolverMode)
+warn("Press " .. tostring(SilentAim.ResolverKeybind) .. " to switch resolver modes (when Resolver is enabled)")
