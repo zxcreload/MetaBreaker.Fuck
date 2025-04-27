@@ -5,15 +5,7 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local Lighting = game:GetService("Lighting")
-local SoundService = game:GetService("SoundService")
-local HttpService = game:GetService("HttpService")
-local StarterGui = game:GetService("StarterGui")
-local TextService = game:GetService("TextService")
-local Teams = game:GetService("Teams")
-local MarketplaceService = game:GetService("MarketplaceService")
-local ContextActionService = game:GetService("ContextActionService")
+local Camera = Workspace.CurrentCamera
 
 -- Adonis Anti-Cheat Bypass
 for _, v in pairs(getgc(true)) do
@@ -22,7 +14,6 @@ for _, v in pairs(getgc(true)) do
         if type(rawget(v, "indexInstance")) == "table" and rawget(v, "indexInstance")[1] == "kick" then
             setreadonly(rawget(v, "indexInstance"), false)
             rawset(v, "Table", {"kick", function() coroutine.yield() end})
-            warn("\n---[ INFO ]---\nBypassed Adonis Anti-Cheat/Anti-Exploit.\nMethod: Prevented Script Table Communication With Server.")
             break
         end
     end
@@ -33,19 +24,26 @@ local success, Library = pcall(function()
     return loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
 end)
 if not success or not Library then
-    warn("Failed to load Obsidian UI Library: " .. (Library or "Unknown error"))
     return
 end
 
 -- Load SaveManager and ThemeManager with error handling
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/SaveManager.lua"))() or nil
 if not SaveManager then
-    warn("Failed to load SaveManager")
+    Library:Notify({
+        Title = "Error",
+        Description = "SaveManager failed to load. Config saving/loading will not work.",
+        Time = 5
+    })
 end
 
 local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/ThemeManager.lua"))() or nil
 if not ThemeManager then
-    warn("Failed to load ThemeManager")
+    Library:Notify({
+        Title = "Error",
+        Description = "ThemeManager failed to load. Theme switching will not work.",
+        Time = 5
+    })
 end
 
 -- Disable custom cursor
@@ -63,11 +61,17 @@ local Window = Library:CreateWindow({
 
 -- Create Tabs
 local CombatTab = Window:AddTab("Combat", "sword")
-local VisualsTab = Window:AddTab("Visuals", "eye")
-local MovementTab = Window:AddTab("Movement", "move")
-local MiscTab = Window:AddTab("Misc", "list")
-local TargetTab = Window:AddTab("Target", "target")
 local ConfigTab = Window:AddTab("Config", "settings")
+
+-- Create Aimbot Sub-Tabs
+local GeneralTab = CombatTab:AddLeftTabbox("General")
+local GeneralTabContent = GeneralTab:AddTab("General")
+
+local VisualsTab = CombatTab:AddRightTabbox("Visuals")
+local VisualsTabContent = VisualsTab:AddTab("Visuals")
+
+local MiscTab = CombatTab:AddRightTabbox("Misc")
+local MiscTabContent = MiscTab:AddTab("Misc")
 
 -- Initialize SaveManager if loaded
 if SaveManager then
@@ -138,15 +142,21 @@ getgenv().SilentAim = {
     ReacquisitionMode = "Immediate",
     PriorityList = {"Enemy1", "Enemy2", "Enemy3"},
     KeepTargetOnDeath = true,
-    ResolverEnabled = false, -- Added Resolver Toggle
+    ResolverEnabled = false,
     ResolverMode = "Velocity",
-    ResolverKeybind = Enum.KeyCode.J
+    ResolverKeybind = Enum.KeyCode.J,
+    AutostompEnabled = false,
+    AutostompCount = 5,
+    AutostompInterval = 0.1,
+    AutostompYOffset = 2,
+    AutostompSoundCheckRadius = 8.76,
+    AutostompVisualEnabled = false,
+    AutostompVisualColor = Color3.fromRGB(255, 0, 0)
 }
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local SilentAim = getgenv().SilentAim
-local Camera = Workspace.CurrentCamera
 
 -- Initialize character
 local Char, HRP, Humanoid
@@ -193,11 +203,156 @@ local minFireDelay = 0.05
 local rapidFireEnabled = false
 local rapidFireMode = "Rage"
 
--- Combat UI Elements
+-- Autostomp Variables (integrated into aimbot)
+local autostompState = {
+    followPart = nil,
+    stompCounter = 0,
+    lastStompTime = nil,
+    stopAutostomp = false,
+    autostompAppliedToTarget = {},
+    boxESP = nil
+}
 
--- Groupbox 1: General Aimbot Settings (Left)
-local GeneralGroupbox = CombatTab:AddLeftGroupbox("General Aimbot")
-local AimbotToggle = GeneralGroupbox:AddToggle("AimbotEnabled", {
+-- Drawing API for 3D Box ESP
+local Drawing = Drawing or loadstring(game:HttpGet("https://raw.githubusercontent.com/Roblox/Core-Scripts/master/CorePackages/Drawing.lua"))()
+
+local function CreateBoxESP()
+    local box = {
+        lines = {},
+        visible = false
+    }
+    for i = 1, 12 do
+        local line = Drawing.new("Line")
+        line.Thickness = 2
+        line.Color = SilentAim.AutostompVisualColor
+        line.Visible = false
+        box.lines[i] = line
+    end
+    return box
+end
+
+local function UpdateBoxESP(box, position)
+    if not box or not SilentAim.AutostompVisualEnabled or not position then
+        if box then
+            for _, line in ipairs(box.lines) do
+                line.Visible = false
+            end
+            box.visible = false
+        end
+        return
+    end
+
+    local size = Vector3.new(2, 3, 2)
+    local corners = {
+        Vector3.new(position.X - size.X / 2, position.Y - size.Y / 2, position.Z - size.Z / 2),
+        Vector3.new(position.X + size.X / 2, position.Y - size.Y / 2, position.Z - size.Z / 2),
+        Vector3.new(position.X + size.X / 2, position.Y + size.Y / 2, position.Z - size.Z / 2),
+        Vector3.new(position.X - size.X / 2, position.Y + size.Y / 2, position.Z - size.Z / 2),
+        Vector3.new(position.X - size.X / 2, position.Y - size.Y / 2, position.Z + size.Z / 2),
+        Vector3.new(position.X + size.X / 2, position.Y - size.Y / 2, position.Z + size.Z / 2),
+        Vector3.new(position.X + size.X / 2, position.Y + size.Y / 2, position.Z + size.Z / 2),
+        Vector3.new(position.X - size.X / 2, position.Y + size.Y / 2, position.Z + size.Z / 2)
+    }
+
+    local edges = {
+        {1, 2}, {2, 3}, {3, 4}, {4, 1},
+        {5, 6}, {6, 7}, {7, 8}, {8, 5},
+        {1, 5}, {2, 6}, {3, 7}, {4, 8}
+    }
+
+    for i, edge in ipairs(edges) do
+        local fromPos, toPos = corners[edge[1]], corners[edge[2]]
+        local fromScreen, fromVisible = Camera:WorldToViewportPoint(fromPos)
+        local toScreen, toVisible = Camera:WorldToViewportPoint(toPos)
+        local line = box.lines[i]
+        line.Color = SilentAim.AutostompVisualColor
+        if fromVisible and toVisible then
+            line.From = Vector2.new(fromScreen.X, fromScreen.Y)
+            line.To = Vector2.new(toScreen.X, toScreen.Y)
+            line.Visible = true
+        else
+            line.Visible = false
+        end
+    end
+    box.visible = true
+end
+
+local function DestroyBoxESP(box)
+    if not box then return end
+    for _, line in ipairs(box.lines) do
+        line.Visible = false
+        line:Remove()
+    end
+    box.lines = nil
+    box.visible = false
+end
+
+local function createFollowPart()
+    local part = Instance.new("Part")
+    part.Name = "FollowPart"
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Size = Vector3.new(0.1, 0.1, 0.1)
+    part.Parent = Workspace
+    return part
+end
+
+local function cleanupAutostomp()
+    if autostompState.followPart then
+        autostompState.followPart:Destroy()
+        autostompState.followPart = nil
+    end
+    autostompState.stompCounter = 0
+    autostompState.lastStompTime = nil
+    autostompState.stopAutostomp = false
+    if Camera and Humanoid then
+        Camera.CameraSubject = Humanoid
+    end
+    if autostompState.boxESP then
+        DestroyBoxESP(autostompState.boxESP)
+        autostompState.boxESP = nil
+    end
+end
+
+local function performStomp()
+    if autostompState.stopAutostomp then
+        cleanupAutostomp()
+        return
+    end
+    ReplicatedStorage.MainEvent:FireServer("Stomp")
+    if ReplicatedStorage:FindFirstChild("assets") and ReplicatedStorage.assets:FindFirstChild("dh") then
+        ReplicatedStorage.assets.dh.MainEvent:FireServer("Stomp")
+    end
+    autostompState.stompCounter = autostompState.stompCounter - 1
+    autostompState.lastStompTime = tick()
+    if autostompState.stompCounter <= 0 then
+        cleanupAutostomp()
+    end
+end
+
+local function GetRagdollPart(char)
+    if not char or not char.Parent or not char:IsDescendantOf(Workspace) then return nil end
+
+    local upperTorso = char:FindFirstChild("UpperTorso")
+    if upperTorso then return upperTorso end
+
+    for _, partName in ipairs(SilentAim.TargetParts) do
+        if partName == "HumanoidRootPart" then continue end
+        if partName:find("Legs") then
+            local combinedPart = GetCombinedPart(char, partName)
+            if combinedPart then return combinedPart end
+        else
+            local part = char:FindFirstChild(partName)
+            if part then return part end
+        end
+    end
+
+    return nil
+end
+
+-- General Tab: Core Aimbot Settings
+local AimbotToggle = GeneralTabContent:AddToggle("AimbotEnabled", {
     Text = "Enable Aimbot",
     Default = SilentAim.Enabled,
     Tooltip = "Toggles the aimbot functionality",
@@ -208,6 +363,11 @@ local AimbotToggle = GeneralGroupbox:AddToggle("AimbotEnabled", {
             Description = "Aimbot " .. (Value and "enabled" or "disabled"),
             Time = 3
         })
+        if not Value then
+            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+            autostompState.autostompAppliedToTarget = {}
+            cleanupAutostomp()
+        end
     end
 })
 
@@ -221,7 +381,7 @@ local TargetKeybind = AimbotToggle:AddKeyPicker("TargetKeybind", {
     end
 })
 
-GeneralGroupbox:AddDropdown("DefaultAimPart", {
+GeneralTabContent:AddDropdown("DefaultAimPart", {
     Text = "Default Aim Part",
     Values = SilentAim.TargetParts,
     Default = SilentAim.DefaultAimPart,
@@ -236,7 +396,7 @@ GeneralGroupbox:AddDropdown("DefaultAimPart", {
     end
 })
 
-GeneralGroupbox:AddDropdown("JumpAimPart", {
+GeneralTabContent:AddDropdown("JumpAimPart", {
     Text = "Jump Aim Part",
     Values = {"UpperLegs", "LowerLegs", "Legs", "Head", "UpperTorso"},
     Default = SilentAim.JumpAimPart,
@@ -251,9 +411,7 @@ GeneralGroupbox:AddDropdown("JumpAimPart", {
     end
 })
 
--- Groupbox 2: Resolver Settings (Left)
-local ResolverGroupbox = CombatTab:AddLeftGroupbox("Resolver Settings")
-local ResolverToggle = ResolverGroupbox:AddToggle("ResolverEnabled", {
+local ResolverToggle = GeneralTabContent:AddToggle("ResolverEnabled", {
     Text = "Enable Resolver",
     Default = SilentAim.ResolverEnabled,
     Tooltip = "Toggles the resolver functionality",
@@ -267,7 +425,17 @@ local ResolverToggle = ResolverGroupbox:AddToggle("ResolverEnabled", {
     end
 })
 
-local ResolverModeDropdown = ResolverGroupbox:AddDropdown("ResolverMode", {
+local ResolverKeybind = ResolverToggle:AddKeyPicker("ResolverModeKeybind", {
+    Default = tostring(SilentAim.ResolverKeybind):match("Enum%.KeyCode%.(.+)") or "J",
+    Text = "Resolver Mode Key",
+    Mode = "Toggle",
+    Tooltip = "Key to cycle resolver modes",
+    Callback = function(Value)
+        -- Handled in InputBegan
+    end
+})
+
+GeneralTabContent:AddDropdown("ResolverMode", {
     Text = "Resolver Mode",
     Values = {"Velocity", "MoveDirection", "CalculateCFrame"},
     Default = SilentAim.ResolverMode,
@@ -282,18 +450,7 @@ local ResolverModeDropdown = ResolverGroupbox:AddDropdown("ResolverMode", {
     end
 })
 
--- Add KeyPicker to ResolverToggle
-local ResolverModeKeybind = ResolverToggle:AddKeyPicker("ResolverModeKeybind", {
-    Default = tostring(SilentAim.ResolverKeybind):match("Enum%.KeyCode%.(.+)") or "J",
-    Text = "Resolver Mode Key",
-    Mode = "Toggle",
-    Tooltip = "Key to cycle resolver modes",
-    Callback = function(Value)
-        -- Handled in InputBegan
-    end
-})
-
-ResolverGroupbox:AddInput("PredictionValue", {
+GeneralTabContent:AddInput("PredictionValue", {
     Text = "Prediction Value",
     Default = tostring(SilentAim.DefaultPrediction),
     Numeric = true,
@@ -318,9 +475,7 @@ ResolverGroupbox:AddInput("PredictionValue", {
     end
 })
 
--- Groupbox 3: Aimbot Checks (Right)
-local ChecksGroupbox = CombatTab:AddRightGroupbox("Aimbot Checks")
-ChecksGroupbox:AddToggle("VisibleCheck", {
+GeneralTabContent:AddToggle("VisibleCheck", {
     Text = "Visible Check",
     Default = SilentAim.VisibleCheck,
     Tooltip = "Only targets visible enemies",
@@ -334,7 +489,7 @@ ChecksGroupbox:AddToggle("VisibleCheck", {
     end
 })
 
-ChecksGroupbox:AddToggle("IgnoreRagdoll", {
+GeneralTabContent:AddToggle("IgnoreRagdoll", {
     Text = "Ignore Ragdoll",
     Default = SilentAim.IgnoreRagdoll,
     Tooltip = "Ignores knocked-out enemies",
@@ -348,7 +503,7 @@ ChecksGroupbox:AddToggle("IgnoreRagdoll", {
     end
 })
 
-ChecksGroupbox:AddToggle("IgnoreGrabbed", {
+GeneralTabContent:AddToggle("IgnoreGrabbed", {
     Text = "Ignore Grabbed",
     Default = SilentAim.IgnoreGrabbed,
     Tooltip = "Ignores enemies being grabbed",
@@ -362,7 +517,7 @@ ChecksGroupbox:AddToggle("IgnoreGrabbed", {
     end
 })
 
-ChecksGroupbox:AddToggle("WallCheck", {
+GeneralTabContent:AddToggle("WallCheck", {
     Text = "Wall Check",
     Default = SilentAim.WallCheck,
     Tooltip = "Checks for walls between you and the target",
@@ -376,9 +531,8 @@ ChecksGroupbox:AddToggle("WallCheck", {
     end
 })
 
--- Groupbox 4: Tracer Settings (Right)
-local TracerGroupbox = CombatTab:AddRightGroupbox("Tracer Settings")
-local TracerToggle = TracerGroupbox:AddToggle("TracerEnabled", {
+-- Visuals Tab: Tracer and Autostomp Visuals
+local TracerToggle = VisualsTabContent:AddToggle("TracerEnabled", {
     Text = "Enable Tracer",
     Default = SilentAim.TracerEnabled,
     Tooltip = "Toggles the tracer visibility",
@@ -398,8 +552,7 @@ local TracerToggle = TracerGroupbox:AddToggle("TracerEnabled", {
     end
 })
 
--- Add ColorPicker to TracerToggle
-local TracerColorPicker = TracerToggle:AddColorPicker("TracerColor", {
+TracerToggle:AddColorPicker("TracerColor", {
     Default = SilentAim.TracerColor,
     Title = "Tracer Color",
     Transparency = 0,
@@ -416,7 +569,7 @@ local TracerColorPicker = TracerToggle:AddColorPicker("TracerColor", {
     end
 })
 
-TracerGroupbox:AddSlider("TracerThickness", {
+VisualsTabContent:AddSlider("TracerThickness", {
     Text = "Tracer Thickness",
     Default = SilentAim.TracerThickness,
     Min = 0.1,
@@ -438,9 +591,133 @@ TracerGroupbox:AddSlider("TracerThickness", {
     end
 })
 
--- Groupbox 5: Rapid Fire (Right)
-local RapidFireGroupbox = CombatTab:AddRightGroupbox("Rapid Fire")
-local RapidFireToggle = RapidFireGroupbox:AddToggle("RapidFireEnabled", {
+local AutostompVisualToggle = VisualsTabContent:AddToggle("AutostompVisualEnabled", {
+    Text = "Enable Autostomp Visual",
+    Default = SilentAim.AutostompVisualEnabled,
+    Tooltip = "Toggles the visualization of desync position during autostomp",
+    Callback = function(Value)
+        SilentAim.AutostompVisualEnabled = Value
+        Library:Notify({
+            Title = "Autostomp Visual",
+            Description = "Autostomp Visual " .. (Value and "enabled" or "disabled"),
+            Time = 3
+        })
+        if not Value and autostompState.boxESP then
+            DestroyBoxESP(autostompState.boxESP)
+            autostompState.boxESP = nil
+        end
+    end
+})
+
+AutostompVisualToggle:AddColorPicker("AutostompVisualColor", {
+    Default = SilentAim.AutostompVisualColor,
+    Title = "Autostomp Visual Color",
+    Transparency = 0,
+    Callback = function(Value)
+        SilentAim.AutostompVisualColor = Value
+        Library:Notify({
+            Title = "Autostomp Visual Color",
+            Description = "Color updated",
+            Time = 3
+        })
+    end
+})
+
+-- Misc Tab: Autostomp and Rapid Fire
+local AutostompToggle = MiscTabContent:AddToggle("AutostompEnabled", {
+    Text = "Enable Autostomp",
+    Default = SilentAim.AutostompEnabled,
+    Tooltip = "Toggles the autostomp functionality as part of aimbot",
+    Callback = function(Value)
+        SilentAim.AutostompEnabled = Value
+        Library:Notify({
+            Title = "Autostomp",
+            Description = "Autostomp " .. (Value and "enabled" or "disabled"),
+            Time = 3
+        })
+        if not Value then
+            autostompState.autostompAppliedToTarget = {}
+            cleanupAutostomp()
+        end
+    end
+})
+
+MiscTabContent:AddInput("AutostompCount", {
+    Text = "Stomp Count",
+    Default = tostring(SilentAim.AutostompCount),
+    Numeric = true,
+    Placeholder = "Enter stomp count (e.g., 5)",
+    Tooltip = "Sets the number of stomps to perform",
+    Callback = function(Value)
+        local numValue = tonumber(Value)
+        if numValue and numValue >= 1 then
+            SilentAim.AutostompCount = numValue
+            Library:Notify({
+                Title = "Autostomp Count",
+                Description = "Set to " .. numValue,
+                Time = 3
+            })
+        else
+            Library:Notify({
+                Title = "Autostomp Count",
+                Description = "Invalid value, must be a positive integer",
+                Time = 3
+            })
+        end
+    end
+})
+
+MiscTabContent:AddInput("AutostompInterval", {
+    Text = "Stomp Interval",
+    Default = tostring(SilentAim.AutostompInterval),
+    Numeric = true,
+    Placeholder = "Enter interval (e.g., 0.1)",
+    Tooltip = "Sets the interval between stomps in seconds",
+    Callback = function(Value)
+        local numValue = tonumber(Value)
+        if numValue and numValue >= 0 then
+            SilentAim.AutostompInterval = numValue
+            Library:Notify({
+                Title = "Autostomp Interval",
+                Description = "Set to " .. numValue .. " seconds",
+                Time = 3
+            })
+        else
+            Library:Notify({
+                Title = "Autostomp Interval",
+                Description = "Invalid value, must be a positive number",
+                Time = 3
+            })
+        end
+    end
+})
+
+MiscTabContent:AddInput("AutostompYOffset", {
+    Text = "Y Offset",
+    Default = tostring(SilentAim.AutostompYOffset),
+    Numeric = true,
+    Placeholder = "Enter Y offset (e.g., 2)",
+    Tooltip = "Sets the Y offset for desync position above the target",
+    Callback = function(Value)
+        local numValue = tonumber(Value)
+        if numValue and numValue >= 0 then
+            SilentAim.AutostompYOffset = numValue
+            Library:Notify({
+                Title = "Autostomp Y Offset",
+                Description = "Set to " .. numValue,
+                Time = 3
+            })
+        else
+            Library:Notify({
+                Title = "Autostomp Y Offset",
+                Description = "Invalid value, must be a positive number",
+                Time = 3
+            })
+        end
+    end
+})
+
+local RapidFireToggle = MiscTabContent:AddToggle("RapidFireEnabled", {
     Text = "Enable Rapid Fire",
     Default = false,
     Tooltip = "Toggles rapid fire functionality",
@@ -454,7 +731,7 @@ local RapidFireToggle = RapidFireGroupbox:AddToggle("RapidFireEnabled", {
     end
 })
 
-local RapidFireModeDropdown = RapidFireGroupbox:AddDropdown("RapidFireMode", {
+MiscTabContent:AddDropdown("RapidFireMode", {
     Text = "Rapid Fire Mode",
     Values = {"Legit", "Rage"},
     Default = "Rage",
@@ -469,7 +746,7 @@ local RapidFireModeDropdown = RapidFireGroupbox:AddDropdown("RapidFireMode", {
     end
 })
 
-local RapidFireDelayTextbox = RapidFireGroupbox:AddInput("RapidFireDelay", {
+MiscTabContent:AddInput("RapidFireDelay", {
     Text = "Rapid Fire Delay",
     Default = "0.05",
     Numeric = true,
@@ -493,6 +770,30 @@ local RapidFireDelayTextbox = RapidFireGroupbox:AddInput("RapidFireDelay", {
         end
     end
 })
+
+-- Sound Detection for sounds containing "blood" in the name
+Workspace.DescendantAdded:Connect(function(descendant)
+    if not SilentAim.AutostompEnabled or not autostompState.followPart then return end
+    if not descendant:IsA("Sound") then return end
+
+    if not string.find(descendant.Name:lower(), "blood", 1, true) then return end
+
+    local targetPlayer = SilentAim.Selected
+    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character.Parent or not targetPlayer.Character:IsDescendantOf(Workspace) then return end
+
+    local targetPart = GetRagdollPart(targetPlayer.Character)
+    if not targetPart then return end
+
+    local distance = (targetPart.Position - HRP.Position).Magnitude
+    if distance <= SilentAim.AutostompSoundCheckRadius then
+        autostompState.stopAutostomp = true
+        Library:Notify({
+            Title = "Autostomp",
+            Description = "Blood sound detected (" .. descendant.Name .. "), stopping autostomp",
+            Time = 3
+        })
+    end
+end)
 
 -- Aimbot Functions
 local function GetPredictionForDistance(distance)
@@ -524,24 +825,28 @@ local function getPredictedPosition(targetPlayer)
     local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local distance = localRoot and (localRoot.Position - aimPartPos).Magnitude or math.huge
     local predictionXZ, predictionY = GetPredictionForDistance(distance)
-    if SilentAim.ResolverMode == "Velocity" then
-        local velocity = aimPart.Velocity
-        return aimPartPos + Vector3.new(velocity.X * predictionXZ, velocity.Y * predictionY, velocity.Z * predictionXZ)
-    elseif SilentAim.ResolverMode == "MoveDirection" then
-        return aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (predictionXZ * 10))
-    elseif SilentAim.ResolverMode == "CalculateCFrame" then
-        if (aimPartPos - lastPosition).Magnitude < 0.001 then
-            return aimPartPos
-        else
-            local distance = (aimPartPos - lastPosition).Magnitude
-            local predictedDistance = (distance / deltaTime) * (0.1 * (predictionXZ * 10))
-            local predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
-            local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * predictionY)
-            predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
-            lastUpdateTime = currentTime
-            lastPosition = aimPartPos
-            return predictedPosition
+    if SilentAim.ResolverEnabled then
+        if SilentAim.ResolverMode == "Velocity" then
+            local velocity = aimPart.Velocity
+            return aimPartPos + Vector3.new(velocity.X * predictionXZ, velocity.Y * predictionY, velocity.Z * predictionXZ)
+        elseif SilentAim.ResolverMode == "MoveDirection" then
+            return aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (predictionXZ * 10))
+        elseif SilentAim.ResolverMode == "CalculateCFrame" then
+            if (aimPartPos - lastPosition).Magnitude < 0.001 then
+                return aimPartPos
+            else
+                local distance = (aimPartPos - lastPosition).Magnitude
+                local predictedDistance = (distance / deltaTime) * (0.1 * (predictionXZ * 10))
+                local predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
+                local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * predictionY)
+                predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
+                lastUpdateTime = currentTime
+                lastPosition = aimPartPos
+                return predictedPosition
+            end
         end
+    else
+        return aimPartPos
     end
     return nil
 end
@@ -670,7 +975,19 @@ local function ReacquireTarget()
 end
 
 local function Check()
-    if not (SilentAim.Enabled and SilentAim.Selected and SilentAim.Selected ~= LocalPlayer) then return false end
+    if not SilentAim.Enabled then
+        return false
+    end
+    if not SilentAim.Selected or SilentAim.Selected == LocalPlayer then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return false
+    end
+    if not SilentAim.Selected:IsA("Player") then
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        ReacquireTarget()
+        return false
+    end
     if not SilentAim.Selected.Parent or not SilentAim.Selected:IsDescendantOf(Players) then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
         ReacquireTarget()
@@ -695,7 +1012,7 @@ local function Check()
     end
     local koValue = bodyEffects["K.O"].Value
     local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
-    if (SilentAim.IgnoreRagdoll and koValue) or (SilentAim.IgnoreGrabbed and grabbed) then
+    if (SilentAim.IgnoreRagdoll and koValue and not SilentAim.AutostompEnabled) or (SilentAim.IgnoreGrabbed and grabbed) then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
         ReacquireTarget()
         return false
@@ -714,10 +1031,13 @@ end
 local function GetClosest()
     local closest, shortest, targetPart = nil, math.huge, nil
     if not Camera then
-        SilentAim.Selected, SilentAim.SelectedPart = LocalPlayer, nil
+        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
         return
     end
     for _, plr in ipairs(Players:GetPlayers()) do
+        if not plr:IsA("Player") then
+            continue
+        end
         if plr == LocalPlayer or not IsWhitelisted(plr) or not plr.Parent or not plr:IsDescendantOf(Players) then continue end
         local char = plr.Character
         if char and char.Parent and char:IsDescendantOf(Workspace) and char:FindFirstChild("Humanoid") then
@@ -734,9 +1054,13 @@ local function GetClosest()
             end
         end
     end
-    SilentAim.Selected = closest or LocalPlayer
+    SilentAim.Selected = closest
     SilentAim.SelectedPart = targetPart
-    if closest then SilentAim.PreviousTarget = closest end
+    if closest then
+        SilentAim.PreviousTarget = closest
+    else
+        SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+    end
 end
 
 local function UpdateTracer()
@@ -781,6 +1105,99 @@ local function UpdateTargetSelection()
     end
 end
 
+local function UpdateAimbot()
+    UpdateTracer()
+    UpdateTargetSelection()
+
+    if not SilentAim.Enabled or not SilentAim.AutostompEnabled or not Check() then
+        if autostompState.followPart then cleanupAutostomp() end
+        return
+    end
+
+    local targetPlayer = SilentAim.Selected
+    local char = targetPlayer.Character
+    local bodyEffects = char:FindFirstChild("BodyEffects")
+    local ko = bodyEffects and bodyEffects:FindFirstChild("K.O")
+    local humanoid = char:FindFirstChild("Humanoid")
+
+    if not bodyEffects or not ko or not ko.Parent or not humanoid or not humanoid.Parent then
+        if autostompState.followPart then cleanupAutostomp() end
+        return
+    end
+
+    if not ko.Value or humanoid.Health <= 0 then
+        if autostompState.followPart then cleanupAutostomp() end
+        autostompState.autostompAppliedToTarget[targetPlayer] = nil
+        return
+    end
+
+    local ragdollPart = GetRagdollPart(char)
+    if not ragdollPart then
+        if autostompState.followPart then cleanupAutostomp() end
+        return
+    end
+
+    if not Char or not Char.Parent or not Char:IsDescendantOf(Workspace) or not HRP or not HRP.Parent or not Humanoid then
+        if autostompState.followPart then cleanupAutostomp() end
+        return
+    end
+
+    if autostompState.autostompAppliedToTarget[targetPlayer] then
+        if autostompState.followPart then
+            local currentTargetPosition = ragdollPart.Position
+            local originalCFrame = HRP.CFrame
+            local newCFrame = CFrame.new(currentTargetPosition + Vector3.new(0, SilentAim.AutostompYOffset, 0))
+
+            autostompState.followPart.CFrame = originalCFrame + Vector3.new(0, 1.5, 0)
+            Camera.CameraSubject = autostompState.followPart
+
+            HRP.CFrame = newCFrame
+            RunService.RenderStepped:Wait()
+            HRP.CFrame = originalCFrame
+
+            if not autostompState.boxESP then
+                autostompState.boxESP = CreateBoxESP()
+            end
+            UpdateBoxESP(autostompState.boxESP, newCFrame.Position)
+
+            if autostompState.lastStompTime and (tick() - autostompState.lastStompTime) >= SilentAim.AutostompInterval and autostompState.stompCounter > 0 then
+                performStomp()
+            end
+        end
+        return
+    end
+
+    autostompState.autostompAppliedToTarget[targetPlayer] = true
+    if not autostompState.followPart then
+        autostompState.followPart = createFollowPart()
+        autostompState.stompCounter = SilentAim.AutostompCount
+        autostompState.lastStompTime = tick()
+        autostompState.stopAutostomp = false
+    end
+
+    if autostompState.followPart then
+        local currentTargetPosition = ragdollPart.Position
+        local originalCFrame = HRP.CFrame
+        local newCFrame = CFrame.new(currentTargetPosition + Vector3.new(0, SilentAim.AutostompYOffset, 0))
+
+        autostompState.followPart.CFrame = originalCFrame + Vector3.new(0, 1.5, 0)
+        Camera.CameraSubject = autostompState.followPart
+
+        HRP.CFrame = newCFrame
+        RunService.RenderStepped:Wait()
+        HRP.CFrame = originalCFrame
+
+        if not autostompState.boxESP then
+            autostompState.boxESP = CreateBoxESP()
+        end
+        UpdateBoxESP(autostompState.boxESP, newCFrame.Position)
+
+        if autostompState.lastStompTime and (tick() - autostompState.lastStompTime) >= SilentAim.AutostompInterval and autostompState.stompCounter > 0 then
+            performStomp()
+        end
+    end
+end
+
 -- Rapid Fire Functions
 local function safeActivate(tool)
     if not debounce and tool and tool:IsA("Tool") then
@@ -801,9 +1218,8 @@ local function fireLoop()
             if rapidFireMode == "Rage" then
                 safeActivate(tool)
             elseif rapidFireMode == "Legit" then
-                -- Placeholder for Legit mode (e.g., slower firing rate)
                 safeActivate(tool)
-                task.wait(minFireDelay * 2) -- Example adjustment for Legit mode
+                task.wait(minFireDelay * 2)
             end
         end
         RunService.Heartbeat:Wait()
@@ -813,9 +1229,9 @@ end
 -- Input Handling
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
-    if input.KeyCode == SilentAim.Keybind and SilentAim.TargetSelectionMode == "Keybind" then
+    if input.KeyCode == SilentAim.Keybind and SilentAim.TargetSelectionMode == "Keybind" and SilentAim.Enabled then
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
-            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = LocalPlayer, nil, nil
+            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
             Library:Notify({
                 Title = "Aimbot",
                 Description = "Target deselected",
@@ -834,7 +1250,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         end
     elseif input.KeyCode == SilentAim.ResolverKeybind and SilentAim.ResolverEnabled then
         SilentAim.ResolverMode = SilentAim.ResolverMode == "Velocity" and "MoveDirection" or SilentAim.ResolverMode == "MoveDirection" and "CalculateCFrame" or "Velocity"
-        ResolverModeDropdown:SetValue(SilentAim.ResolverMode)
         Library:Notify({
             Title = "Resolver Mode",
             Description = "Set to " .. SilentAim.ResolverMode,
@@ -852,12 +1267,22 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Update Keybind using OnChanged
-TargetKeybind:OnChanged(function()
+-- Update Keybinds using OnChanged
+TargetKeybind.OnChanged(function()
     local key = TargetKeybind:GetValue().key
     SilentAim.Keybind = Enum.KeyCode[key] or Enum.KeyCode.Q
     Library:Notify({
         Title = "Target Keybind",
+        Description = "Set to " .. (key or "None"),
+        Time = 3
+    })
+end)
+
+ResolverKeybind.OnChanged(function()
+    local key = ResolverKeybind:GetValue().key
+    SilentAim.ResolverKeybind = Enum.KeyCode[key] or Enum.KeyCode.J
+    Library:Notify({
+        Title = "Resolver Keybind",
         Description = "Set to " .. (key or "None"),
         Time = 3
     })
@@ -879,6 +1304,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
     if SilentAim.Selected == player or SilentAim.PreviousTarget == player then
         SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+        autostompState.autostompAppliedToTarget[player] = nil
         ReacquireTarget()
     end
 end)
@@ -886,6 +1312,9 @@ end)
 for _, player in ipairs(Players:GetPlayers()) do
     if player ~= LocalPlayer then
         player.CharacterAdded:Connect(function(char)
+            if autostompState.autostompAppliedToTarget[player] then
+                autostompState.autostompAppliedToTarget[player] = nil
+            end
             if SilentAim.Selected == player then
                 SilentAim.SelectedPart = ClosestPart(char)
             end
@@ -896,6 +1325,9 @@ end
 Players.PlayerAdded:Connect(function(player)
     if player ~= LocalPlayer then
         player.CharacterAdded:Connect(function(char)
+            if autostompState.autostompAppliedToTarget[player] then
+                autostompState.autostompAppliedToTarget[player] = nil
+            end
             if SilentAim.Selected == player then
                 SilentAim.SelectedPart = ClosestPart(char)
             end
@@ -908,6 +1340,12 @@ LocalPlayer.CharacterAdded:Connect(function(newCharacter)
     HRP = Char:WaitForChild("HumanoidRootPart", 5) or error("HumanoidRootPart not found")
     Humanoid = Char:WaitForChild("Humanoid", 5) or error("Humanoid not found")
     setupCharacter(newCharacter)
+    if autostompState.followPart then
+        autostompState.followPart = createFollowPart()
+        autostompState.stompCounter = SilentAim.AutostompCount
+        autostompState.lastStompTime = tick()
+        autostompState.stopAutostomp = false
+    end
 end)
 
 -- Setup Character for Rapid Fire
@@ -930,6 +1368,9 @@ end
 -- Mouse Hook with explicit if-else
 local __index
 __index = hookmetamethod(game, "__index", function(t, k)
+    if not SilentAim.Enabled then
+        return __index(t, k)
+    end
     if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
         if not Check() then
             return __index(t, k)
@@ -944,7 +1385,7 @@ __index = hookmetamethod(game, "__index", function(t, k)
                     return selPart
                 end
             else
-                return __index(t, k) -- Fallback if prediction fails
+                return __index(t, k)
             end
         end
     end
@@ -953,8 +1394,7 @@ end)
 
 -- Main Loop
 RunService.Heartbeat:Connect(function()
-    UpdateTracer()
-    UpdateTargetSelection()
+    UpdateAimbot()
 end)
 
 -- Cleanup
@@ -962,6 +1402,14 @@ game:BindToClose(function()
     if Beam then Beam:Destroy() end
     if StartAttachment then StartAttachment:Destroy() end
     if EndAttachment then EndAttachment:Destroy() end
+    cleanupAutostomp()
+    for player, _ in pairs(autostompState.autostompAppliedToTarget) do
+        autostompState.autostompAppliedToTarget[player] = nil
+    end
+    if autostompState.boxESP then
+        DestroyBoxESP(autostompState.boxESP)
+        autostompState.boxESP = nil
+    end
     Library:Unload()
 end)
 
@@ -979,7 +1427,3 @@ Library:Notify({
 
 -- Show the UI
 Library:Toggle(true)
-
-warn("metaBreaker.lua with Aimbot and Rapid Fire loaded successfully!")
-warn("Resolver Mode: " .. SilentAim.ResolverMode)
-warn("Press " .. tostring(SilentAim.ResolverKeybind) .. " to switch resolver modes (when Resolver is enabled)")
