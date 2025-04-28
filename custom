@@ -57,7 +57,6 @@ local Window = Library:CreateWindow({
     AutoShow = true,
     ToggleKeybind = Enum.KeyCode.RightControl,
     ShowCustomCursor = false,
-    Size = UDim2.fromOffset(1050, 800)
 })
 
 -- Create Tabs
@@ -157,8 +156,11 @@ getgenv().SilentAim = {
     ForcePredictionEnabled = false,
     ForcePredictionKeybind = Enum.KeyCode.P,
     CurrentPredictionConfigIndex = 1,
-    CustomPredictionValue = 0.16, -- Default value for CustomPredictionValue
-    UsingForcePrediction = false
+    CustomPredictionValue = 0.16,
+    UsingForcePrediction = false,
+    HitNotificationsEnabled = false,
+    HitNotificationTime = 3,
+    LastKnownHealth = nil
 }
 
 local LocalPlayer = Players.LocalPlayer
@@ -458,6 +460,7 @@ local AimbotToggle = GeneralTabContent:AddToggle("AimbotEnabled", {
         if not Value then
             SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
             autostompState.autostompAppliedToTarget = {}
+            SilentAim.LastKnownHealth = nil -- Reset health tracking
             cleanupAutostomp()
         end
     end
@@ -687,6 +690,24 @@ GeneralTabContent:AddToggle("WallCheck", {
                 Description = Value and "Enabled" or "Disabled",
                 Time = 3
             })
+        end
+    end
+})
+
+-- Add HitNotifications Toggle
+local HitNotificationsToggle = GeneralTabContent:AddToggle("HitNotificationsEnabled", {
+    Text = "Enable Hit Notifications",
+    Default = SilentAim.HitNotificationsEnabled,
+    Tooltip = "Shows a notification when the target's health decreases",
+    Callback = function(Value)
+        SilentAim.HitNotificationsEnabled = Value
+        Library:Notify({
+            Title = "Hit Notifications",
+            Description = "Hit Notifications " .. (Value and "enabled" or "disabled"),
+            Time = 3
+        })
+        if not Value then
+            SilentAim.LastKnownHealth = nil -- Reset health tracking when disabled
         end
     end
 })
@@ -1116,6 +1137,7 @@ end
 local function ReacquireTarget()
     if not SilentAim.KeepTargetOnDeath then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         return
     end
     if SilentAim.ReacquisitionMode == "Immediate" then
@@ -1124,6 +1146,7 @@ local function ReacquireTarget()
             if player.Character and player.Character.Parent and player.Character:IsDescendantOf(Workspace) then
                 SilentAim.Selected = player
                 SilentAim.SelectedPart = ClosestPart(player.Character)
+                SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
             else
                 local connection
                 connection = player.CharacterAdded:Connect(function(char)
@@ -1133,16 +1156,19 @@ local function ReacquireTarget()
                     end
                     SilentAim.Selected = player
                     SilentAim.SelectedPart = ClosestPart(char)
+                    SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
                     connection:Disconnect()
                 end)
             end
         else
             SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+            SilentAim.LastKnownHealth = nil -- Reset health tracking
         end
     elseif SilentAim.ReacquisitionMode == "Nearest" then
         GetClosest()
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.PreviousTarget = SilentAim.Selected
+            SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
         end
     elseif SilentAim.ReacquisitionMode == "Priority" then
         for _, playerName in ipairs(SilentAim.PriorityList) do
@@ -1153,6 +1179,7 @@ local function ReacquireTarget()
                     SilentAim.Selected = player
                     SilentAim.SelectedPart = part
                     SilentAim.PreviousTarget = player
+                    SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
                     return
                 end
             end
@@ -1160,6 +1187,7 @@ local function ReacquireTarget()
         GetClosest()
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.PreviousTarget = SilentAim.Selected
+            SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
         end
     end
 end
@@ -1170,33 +1198,39 @@ local function Check()
     end
     if not SilentAim.Selected or SilentAim.Selected == LocalPlayer then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return false
     end
     if not SilentAim.Selected:IsA("Player") then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return false
     end
     if not SilentAim.Selected.Parent or not SilentAim.Selected:IsDescendantOf(Players) then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return false
     end
     local char = SilentAim.Selected.Character
     if not char or not char.Parent or not char:IsDescendantOf(Workspace) or not char:FindFirstChild("Humanoid") then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return false
     end
     if not SilentAim.KeepTargetOnDeath and char.Humanoid.Health <= 0 then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return false
     end
     local bodyEffects = char:FindFirstChild("BodyEffects")
     if not bodyEffects or not bodyEffects:FindFirstChild("K.O") then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return false
     end
@@ -1204,6 +1238,7 @@ local function Check()
     local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
     if (SilentAim.IgnoreRagdoll and koValue and not SilentAim.AutostompEnabled and not autostompState.forceStompActive) or (SilentAim.IgnoreGrabbed and grabbed) then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return false
     end
@@ -1211,6 +1246,7 @@ local function Check()
         SilentAim.SelectedPart = ClosestPart(char)
         if not SilentAim.SelectedPart then
             SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+            SilentAim.LastKnownHealth = nil -- Reset health tracking
             ReacquireTarget()
             return false
         end
@@ -1222,6 +1258,7 @@ local function GetClosest()
     local closest, shortest, targetPart = nil, math.huge, nil
     if not Camera then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         return
     end
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -1248,8 +1285,10 @@ local function GetClosest()
     SilentAim.SelectedPart = targetPart
     if closest then
         SilentAim.PreviousTarget = closest
+        SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
     else
         SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
     end
 end
 
@@ -1266,6 +1305,7 @@ local function UpdateTracer()
     local tChar = SilentAim.Selected and SilentAim.Selected.Character
     if not tChar or not tChar.Parent or not tChar:IsDescendantOf(Workspace) then
         SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         ReacquireTarget()
         return
     end
@@ -1274,6 +1314,7 @@ local function UpdateTracer()
         SilentAim.SelectedPart = ClosestPart(tChar)
         if not SilentAim.SelectedPart then
             SilentAim.Selected, SilentAim.SelectedPart = nil, nil
+            SilentAim.LastKnownHealth = nil -- Reset health tracking
             ReacquireTarget()
             return
         end
@@ -1291,13 +1332,56 @@ local function UpdateTargetSelection()
         GetClosest()
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.PreviousTarget = SilentAim.Selected
+            SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
         end
     end
+end
+
+-- Function to handle Hit Notifications
+local function CheckHitNotifications()
+    if not SilentAim.HitNotificationsEnabled or not Check() then
+        return
+    end
+
+    local targetPlayer = SilentAim.Selected
+    if not targetPlayer or not targetPlayer.Character then
+        SilentAim.LastKnownHealth = nil -- Reset if no target
+        return
+    end
+
+    local humanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+    if not humanoid then
+        SilentAim.LastKnownHealth = nil -- Reset if no humanoid
+        return
+    end
+
+    local currentHealth = humanoid.Health
+    if currentHealth <= 0 then
+        SilentAim.LastKnownHealth = nil -- Reset on death
+        return
+    end
+
+    if SilentAim.LastKnownHealth == nil then
+        SilentAim.LastKnownHealth = currentHealth -- Initialize health tracking
+        return
+    end
+
+    if currentHealth < SilentAim.LastKnownHealth then
+        local damage = SilentAim.LastKnownHealth - currentHealth
+        Library:Notify({
+            Title = "Hit Notification",
+            Description = string.format("Hit %s for %.1f damage (Health: %.1f)", targetPlayer.Name, damage, currentHealth),
+            Time = SilentAim.HitNotificationTime
+        })
+    end
+
+    SilentAim.LastKnownHealth = currentHealth -- Update last known health
 end
 
 local function UpdateAimbot()
     UpdateTracer()
     UpdateTargetSelection()
+    CheckHitNotifications() -- Add hit notification check
 
     if not SilentAim.Enabled then
         if autostompState.followPart then cleanupAutostomp() end
@@ -1482,6 +1566,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     if input.KeyCode == SilentAim.Keybind and SilentAim.TargetSelectionMode == "Keybind" and SilentAim.Enabled then
         if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
             SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+            SilentAim.LastKnownHealth = nil -- Reset health tracking
             Library:Notify({
                 Title = "Aimbot",
                 Description = "Target deselected",
@@ -1491,6 +1576,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
             GetClosest()
             if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
                 SilentAim.PreviousTarget = SilentAim.Selected
+                SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
                 Library:Notify({
                     Title = "Aimbot",
                     Description = "Target selected: " .. SilentAim.Selected.Name,
@@ -1509,7 +1595,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
         PerformForceStomp()
     elseif input.KeyCode == SilentAim.ForcePredictionKeybind and SilentAim.ForcePredictionEnabled then
         if SilentAim.UsingForcePrediction then
-            -- Switch back to DefaultPrediction
             SilentAim.UsingForcePrediction = false
             Library:Notify({
                 Title = "Force Prediction",
@@ -1517,7 +1602,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
                 Time = 3
             })
         else
-            -- Switch to CustomPredictionValue
             SilentAim.UsingForcePrediction = true
             local predictionValue = SilentAim.CustomPredictionValue
             Library:Notify({
@@ -1595,6 +1679,7 @@ Players.PlayerAdded:Connect(function(player)
                 if not player or not player.Parent or not player:IsDescendantOf(Players) then return end
                 SilentAim.Selected = player
                 SilentAim.SelectedPart = ClosestPart(char)
+                SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
             end)
         end
     end
@@ -1603,6 +1688,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
     if SilentAim.Selected == player or SilentAim.PreviousTarget == player then
         SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
+        SilentAim.LastKnownHealth = nil -- Reset health tracking
         autostompState.autostompAppliedToTarget[player] = nil
         ReacquireTarget()
     end
@@ -1616,6 +1702,7 @@ for _, player in ipairs(Players:GetPlayers()) do
             end
             if SilentAim.Selected == player then
                 SilentAim.SelectedPart = ClosestPart(char)
+                SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
             end
         end)
     end
@@ -1629,6 +1716,7 @@ Players.PlayerAdded:Connect(function(player)
             end
             if SilentAim.Selected == player then
                 SilentAim.SelectedPart = ClosestPart(char)
+                SilentAim.LastKnownHealth = nil -- Reset health tracking for new target
             end
         end)
     end
@@ -1712,17 +1800,4 @@ game:BindToClose(function()
     Library:Unload()
 end)
 
--- Register UI elements with SaveManager and load autoload config
-if SaveManager then
-    SaveManager:LoadAutoloadConfig()
-end
-
--- Notify user that the UI is loaded
-Library:Notify({
-    Title = "metaBreaker.lua",
-    Description = "UI and Aimbot Loaded Successfully!",
-    Time = 3
-})
-
--- Show the UI
-Library:Toggle(true)
+-- Register UI elements with Save
