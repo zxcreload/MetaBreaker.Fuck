@@ -284,8 +284,17 @@
 				-- Drag and drop functionality
 				utility:CreateConnection(ScreenGui_MainFrame.InputBegan, function(Input)
 					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-						Window.Dragging = true
-						Window.DragOffset = ScreenGui_MainFrame.AbsolutePosition - utility:MouseLocation()
+						local MousePos = utility:MouseLocation()
+						local FramePos = ScreenGui_MainFrame.AbsolutePosition
+						local FrameSize = ScreenGui_MainFrame.AbsoluteSize
+						
+						local IsOverFrame = (MousePos.X >= FramePos.X and MousePos.X <= FramePos.X + FrameSize.X and
+							MousePos.Y >= FramePos.Y and MousePos.Y <= FramePos.Y + FrameSize.Y)
+						
+						if IsOverFrame then
+							Window.Dragging = true
+							Window.DragOffset = ScreenGui_MainFrame.AbsolutePosition - MousePos
+						end
 					end
 				end)
 				
@@ -301,22 +310,7 @@
 					end
 				end)
 				
-				-- Дополнительная защита от случайного перетаскивания
-				utility:CreateConnection(uis.InputBegan, function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-						-- Проверяем, находится ли курсор над основным фреймом
-						local MousePos = utility:MouseLocation()
-						local FramePos = ScreenGui_MainFrame.AbsolutePosition
-						local FrameSize = ScreenGui_MainFrame.AbsoluteSize
-						
-						local IsOverFrame = (MousePos.X >= FramePos.X and MousePos.X <= FramePos.X + FrameSize.X and
-							MousePos.Y >= FramePos.Y and MousePos.Y <= FramePos.Y + FrameSize.Y)
-						
-						if not IsOverFrame then
-							Window.Dragging = false
-						end
-					end
-				end)
+				-- Обработка глобальных нажатий клавиш
 				
 				utility:CreateConnection(uis.InputBegan, function(Input)
 					if Input.KeyCode and Input.KeyCode == Window.Key then
