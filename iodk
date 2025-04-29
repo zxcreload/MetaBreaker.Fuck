@@ -289,7 +289,7 @@
 					end
 				end)
 				
-				utility:CreateConnection(uis.InputEnded, function(Input)
+				utility:CreateConnection(ScreenGui_MainFrame.InputEnded, function(Input)
 					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
 						Window.Dragging = false
 					end
@@ -298,6 +298,23 @@
 				utility:CreateConnection(uis.InputChanged, function(Input)
 					if Window.Dragging and Input.UserInputType == Enum.UserInputType.MouseMovement then
 						ScreenGui_MainFrame.Position = UDim2.new(0, utility:MouseLocation().X + Window.DragOffset.X, 0, utility:MouseLocation().Y + Window.DragOffset.Y)
+					end
+				end)
+				
+				-- Дополнительная защита от случайного перетаскивания
+				utility:CreateConnection(uis.InputBegan, function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+						-- Проверяем, находится ли курсор над основным фреймом
+						local MousePos = utility:MouseLocation()
+						local FramePos = ScreenGui_MainFrame.AbsolutePosition
+						local FrameSize = ScreenGui_MainFrame.AbsoluteSize
+						
+						local IsOverFrame = (MousePos.X >= FramePos.X and MousePos.X <= FramePos.X + FrameSize.X and
+							MousePos.Y >= FramePos.Y and MousePos.Y <= FramePos.Y + FrameSize.Y)
+						
+						if not IsOverFrame then
+							Window.Dragging = false
+						end
 					end
 				end)
 				
