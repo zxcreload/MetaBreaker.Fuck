@@ -282,23 +282,48 @@
 			--
 			do -- // Connections
 				-- Drag and drop functionality
-				utility:CreateConnection(ScreenGui_MainFrame.InputBegan, function(Input)
+				-- Создаем область для перетаскивания в верхней части окна
+				local DragArea = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+					BackgroundTransparency = 0, -- Видимый, чтобы пользователь понимал, где можно перетаскивать
+					BorderSizePixel = 0,
+					Parent = ScreenGui_MainFrame,
+					Position = UDim2.new(0, 3, 0, 3),
+					Size = UDim2.new(1, -6, 0, 25), -- Высота области перетаскивания
+					ZIndex = 3 -- Убедимся, что область находится поверх других элементов
+				})
+				
+				-- Добавляем текст с названием UI
+				local DragAreaTitle = utility:RenderObject("TextLabel", {
+					BackgroundTransparency = 1,
+					Font = Enum.Font.Code,
+					Parent = DragArea,
+					Position = UDim2.new(0, 10, 0, 0),
+					Size = UDim2.new(1, -20, 1, 0),
+					Text = "GameSense",
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextSize = 14,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					ZIndex = 4
+				})
+
+				utility:CreateConnection(DragArea.InputBegan, function(Input)
 					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
 						local MousePos = utility:MouseLocation()
-						local FramePos = ScreenGui_MainFrame.AbsolutePosition
-						local FrameSize = ScreenGui_MainFrame.AbsoluteSize
-						
-						local IsOverFrame = (MousePos.X >= FramePos.X and MousePos.X <= FramePos.X + FrameSize.X and
-							MousePos.Y >= FramePos.Y and MousePos.Y <= FramePos.Y + FrameSize.Y)
-						
-						if IsOverFrame then
-							Window.Dragging = true
-							Window.DragOffset = ScreenGui_MainFrame.AbsolutePosition - MousePos
-						end
+						-- Устанавливаем смещение относительно текущей позиции мыши
+						Window.Dragging = true
+						Window.DragOffset = ScreenGui_MainFrame.AbsolutePosition - MousePos
 					end
 				end)
 				
-				utility:CreateConnection(ScreenGui_MainFrame.InputEnded, function(Input)
+				utility:CreateConnection(DragArea.InputEnded, function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+						Window.Dragging = false
+					end
+				end)
+				
+				-- Также обрабатываем InputEnded глобально, чтобы предотвратить "залипание" перетаскивания
+				utility:CreateConnection(uis.InputEnded, function(Input)
 					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
 						Window.Dragging = false
 					end
@@ -306,6 +331,7 @@
 				
 				utility:CreateConnection(uis.InputChanged, function(Input)
 					if Window.Dragging and Input.UserInputType == Enum.UserInputType.MouseMovement then
+						-- Плавное перемещение окна
 						ScreenGui_MainFrame.Position = UDim2.new(0, utility:MouseLocation().X + Window.DragOffset.X, 0, utility:MouseLocation().Y + Window.DragOffset.Y)
 					end
 				end)
