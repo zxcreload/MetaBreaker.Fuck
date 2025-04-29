@@ -2902,3 +2902,5 @@ function ConfigSystem:BuildConfigSection(tab)
 end
 
 ConfigSystem:BuildFolderTree()
+
+return library
