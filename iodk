@@ -378,7 +378,7 @@ function library:CreatePage(Properties)
 			Size = UDim2.new(1, 0, 1, 0),
 			Visible = false,
 			ZIndex = 2,
-			RenderTime = 0.15
+			-- RenderTime = 0.15
 		})
 		--
 		local Page_Tab_Image = utility:RenderObject("ImageLabel", {
@@ -414,7 +414,7 @@ function library:CreatePage(Properties)
 			Position = UDim2.new(0, 0, 0, 1),
 			Size = UDim2.new(1, 1, 1, -2),
 			ZIndex = 2,
-			RenderTime = 0.15
+			-- RenderTime = 0.15
 		})
 		-- //
 		local Border_Inner_Inner = utility:RenderObject("Frame", {
@@ -426,7 +426,7 @@ function library:CreatePage(Properties)
 			Position = UDim2.new(0, 0, 0, 1),
 			Size = UDim2.new(1, 0, 1, -2),
 			ZIndex = 2,
-			RenderTime = 0.15
+			-- RenderTime = 0.15
 		})
 		--
 		local Inner_Inner_Pattern = utility:RenderObject("ImageLabel", {
@@ -1081,7 +1081,7 @@ do -- // Content
 					TextSize = 11,
 					TextStrokeTransparency = 0.5,
 					TextXAlignment = "Center",
-					RenderTime = 0.15
+					-- RenderTime = 0.15
 				})
 				--
 				local Frame_Slider_Title2 = utility:RenderObject("TextLabel", {
@@ -1102,7 +1102,7 @@ do -- // Content
 					TextStrokeTransparency = 0.5,
 					TextTransparency = 0,
 					TextXAlignment = "Center",
-					RenderTime = 0.15
+					-- RenderTime = 0.15
 				})
 				--
 				do -- // Functions
