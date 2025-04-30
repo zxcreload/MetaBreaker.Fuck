@@ -1,1695 +1,2432 @@
--- Services
-local game = game
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Camera = Workspace.CurrentCamera
-
--- Adonis Anti-Cheat Bypass
-for _, v in pairs(getgc(true)) do
-    if type(v) == "table" then
-        setreadonly(v, false)
-        if type(rawget(v, "indexInstance")) == "table" and rawget(v, "indexInstance")[1] == "kick" then
-            setreadonly(rawget(v, "indexInstance"), false)
-            rawset(v, "Table", {"kick", function() coroutine.yield() end})
-            break
-        end
-    end
-end
-
--- Load the main Obsidian UI Library with error handling
-local success, Library = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/Library.lua"))()
-end)
-if not success or not Library then
-    return
-end
-
--- Load SaveManager and ThemeManager with error handling
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/SaveManager.lua"))() or nil
-if not SaveManager then
-    Library:Notify({
-        Title = "Error",
-        Description = "SaveManager failed to load. Config saving/loading will not work.",
-        Time = 5
-    })
-end
-
-local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/addons/ThemeManager.lua"))() or nil
-if not ThemeManager then
-    Library:Notify({
-        Title = "Error",
-        Description = "ThemeManager failed to load. Theme switching will not work.",
-        Time = 5
-    })
-end
-
--- Disable custom cursor
-Library.ShowCustomCursor = false
-
--- Create the main window
-local Window = Library:CreateWindow({
-    Title = "metaBreaker.lua",
-    Footer = "2hollisSucks",
-    Center = true,
-    AutoShow = true,
-    ToggleKeybind = Enum.KeyCode.RightControl,
-    ShowCustomCursor = false,
-})
-
--- Create Tabs
-local CombatTab = Window:AddTab("Combat", "sword")
-local ConfigTab = Window:AddTab("Config", "settings")
-
--- Create Aimbot Sub-Tabs
-local GeneralTab = CombatTab:AddLeftTabbox("General")
-local GeneralTabContent = GeneralTab:AddTab("General")
-
-local VisualsTab = CombatTab:AddRightTabbox("Visuals")
-local VisualsTabContent = VisualsTab:AddTab("Visuals")
-
-local MiscTab = CombatTab:AddRightTabbox("Misc")
-local MiscTabContent = MiscTab:AddTab("Misc")
-
--- Initialize SaveManager if loaded
-if SaveManager then
-    SaveManager:SetLibrary(Library)
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetFolder("metaBreakerConfigs")
-    SaveManager:SetSubFolder("settings")
-else
-    Library:Notify({
-        Title = "Error",
-        Description = "SaveManager failed to load. Config saving/loading will not work.",
-        Time = 5
-    })
-end
-
--- Initialize ThemeManager if loaded
-if ThemeManager then
-    ThemeManager:SetLibrary(Library)
-    ThemeManager:SetFolder("metaBreakerThemes")
-else
-    Library:Notify({
-        Title = "Error",
-        Description = "ThemeManager failed to load. Theme switching will not work.",
-        Time = 5
-    })
-end
-
--- Build Configuration Section in Config Tab
-if SaveManager then
-    SaveManager:BuildConfigSection(ConfigTab)
-end
-
--- Add ThemeManager UI elements to the ConfigTab
-if ThemeManager then
-    ThemeManager:ApplyToTab(ConfigTab)
-end
-
--- Silent Aim Settings
-getgenv().SilentAim = {
-    Enabled = false,
-    TracerEnabled = false,
-    TracerColor = Color3.fromRGB(128, 0, 128),
-    TracerThickness = 0.2,
-    MultiConfigPredictionEnabled = false,
-    DefaultPrediction = 0.161123123,
-    PredictionConfigs = {
-        {Distance = 50, PredictionXZ = 0.12, PredictionY = 0.12},
-        {Distance = 100, PredictionXZ = 0.14, PredictionY = 0.14},
-        {Distance = 1000, PredictionXZ = 0.16, PredictionY = 0.16},
-        {Distance = 10000, PredictionXZ = 0.18, PredictionY = 0.18}
-    },
-    TargetParts = {
-        "HumanoidRootPart", "UpperTorso", "LowerTorso", "Head",
-        "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
-        "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg",
-        "UpperLegs", "LowerLegs", "Legs"
-    },
-    DefaultAimPart = "HumanoidRootPart",
-    JumpAimPart = "UpperLegs",
-    VisibleCheck = true,
-    Keybind = Enum.KeyCode.Q,
-    IgnoreRagdoll = false,
-    IgnoreGrabbed = false,
-    WallCheck = false,
-    TargetSelectionMode = "Keybind",
-    Whitelist = {"ExamplePlayer", "Friend", "Admin"},
-    WhitelistEnabled = false,
-    ReacquisitionMode = "Immediate",
-    PriorityList = {"Enemy1", "Enemy2", "Enemy3"},
-    KeepTargetOnDeath = true,
-    ResolverEnabled = false,
-    ResolverMode = "Velocity",
-    ResolverKeybind = Enum.KeyCode.J,
-    AutostompEnabled = false,
-    AutostompCount = 5,
-    AutostompInterval = 0.1,
-    AutostompYOffset = 2,
-    AutostompSoundCheckRadius = 8.76,
-    AutostompVisualEnabled = false,
-    AutostompVisualColor = Color3.fromRGB(255, 0, 0),
-    ForceStompKeybind = Enum.KeyCode.V, -- New: Keybind for ForceStomp
-    ForcePredictionEnabled = false, -- New: Toggle for ForcePrediction
-    ForcePredictionKeybind = Enum.KeyCode.P, -- New: Keybind for ForcePrediction
-    CurrentPredictionConfigIndex = 1, -- New: Tracks current prediction config
-    CustomPredictionValue = nil -- New: Stores custom prediction value from textbox
-}
-
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
-local SilentAim = getgenv().SilentAim
-
--- Initialize character
-local Char, HRP, Humanoid
-local timeout = 10
-local startTime = tick()
-while not LocalPlayer.Character and (tick() - startTime) < timeout do
-    LocalPlayer.CharacterAdded:Wait()
-end
-Char = LocalPlayer.Character or error("Failed to load LocalPlayer.Character after " .. timeout .. " seconds")
-HRP = Char:WaitForChild("HumanoidRootPart", 5) or error("HumanoidRootPart not found")
-Humanoid = Char:WaitForChild("Humanoid", 5) or error("Humanoid not found")
-
--- Aim variables
-SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
-local lastPosition, lastUpdateTime = nil, nil
-
--- Tracer setup
-local Beam, StartAttachment, EndAttachment
-
-local function InitBeam()
-    if Beam then Beam:Destroy() end
-    if StartAttachment then StartAttachment:Destroy() end
-    if EndAttachment then EndAttachment:Destroy() end
-
-    StartAttachment = Instance.new("Attachment")
-    EndAttachment = Instance.new("Attachment")
-    Beam = Instance.new("Beam")
-    Beam.Color = ColorSequence.new(SilentAim.TracerColor)
-    Beam.Width0 = SilentAim.TracerThickness
-    Beam.Width1 = SilentAim.TracerThickness
-    Beam.Transparency = NumberSequence.new(0)
-    Beam.Attachment0 = StartAttachment
-    Beam.Attachment1 = EndAttachment
-    Beam.Enabled = SilentAim.TracerEnabled
-    Beam.Parent = Workspace
-end
-
-InitBeam()
-
--- Rapid Fire Variables
-local firing = false
-local debounce = false
-local minFireDelay = 0.05
-local rapidFireEnabled = false
-local rapidFireMode = "Rage"
-
--- Autostomp/ForceStomp Variables
-local autostompState = {
-    followPart = nil,
-    stompCounter = 0,
-    lastStompTime = nil,
-    stopAutostomp = false,
-    autostompAppliedToTarget = {},
-    boxESP = nil,
-    forceStompActive = false -- New: Tracks if ForceStomp is active
-}
-
--- Drawing API for 3D Box ESP
-local Drawing = Drawing or loadstring(game:HttpGet("https://raw.githubusercontent.com/Roblox/Core-Scripts/master/CorePackages/Drawing.lua"))()
-
-local function CreateBoxESP()
-    local box = {
-        lines = {},
-        visible = false
-    }
-    for i = 1, 12 do
-        local line = Drawing.new("Line")
-        line.Thickness = 2
-        line.Color = SilentAim.AutostompVisualColor
-        line.Visible = false
-        box.lines[i] = line
-    end
-    return box
-end
-
-local function UpdateBoxESP(box, position)
-    if not box or not SilentAim.AutostompVisualEnabled or not position then
-        if box then
-            for _, line in ipairs(box.lines) do
-                line.Visible = false
-            end
-            box.visible = false
-        end
-        return
-    end
-
-    local size = Vector3.new(2, 3, 2)
-    local corners = {
-        Vector3.new(position.X - size.X / 2, position.Y - size.Y / 2, position.Z - size.Z / 2),
-        Vector3.new(position.X + size.X / 2, position.Y - size.Y / 2, position.Z - size.Z / 2),
-        Vector3.new(position.X + size.X / 2, position.Y + size.Y / 2, position.Z - size.Z / 2),
-        Vector3.new(position.X - size.X / 2, position.Y + size.Y / 2, position.Z - size.Z / 2),
-        Vector3.new(position.X - size.X / 2, position.Y - size.Y / 2, position.Z + size.Z / 2),
-        Vector3.new(position.X + size.X / 2, position.Y - size.Y / 2, position.Z + size.Z / 2),
-        Vector3.new(position.X + size.X / 2, position.Y + size.Y / 2, position.Z + size.Z / 2),
-        Vector3.new(position.X - size.X / 2, position.Y + size.Y / 2, position.Z + size.Z / 2)
-    }
-
-    local edges = {
-        {1, 2}, {2, 3}, {3, 4}, {4, 1},
-        {5, 6}, {6, 7}, {7, 8}, {8, 5},
-        {1, 5}, {2, 6}, {3, 7}, {4, 8}
-    }
-
-    for i, edge in ipairs(edges) do
-        local fromPos, toPos = corners[edge[1]], corners[edge[2]]
-        local fromScreen, fromVisible = Camera:WorldToViewportPoint(fromPos)
-        local toScreen, toVisible = Camera:WorldToViewportPoint(toPos)
-        local line = box.lines[i]
-        line.Color = SilentAim.AutostompVisualColor
-        if fromVisible and toVisible then
-            line.From = Vector2.new(fromScreen.X, fromScreen.Y)
-            line.To = Vector2.new(toScreen.X, toScreen.Y)
-            line.Visible = true
-        else
-            line.Visible = false
-        end
-    end
-    box.visible = true
-end
-
-local function DestroyBoxESP(box)
-    if not box then return end
-    for _, line in ipairs(box.lines) do
-        line.Visible = false
-        line:Remove()
-    end
-    box.lines = nil
-    box.visible = false
-end
-
-local function createFollowPart()
-    local part = Instance.new("Part")
-    part.Name = "FollowPart"
-    part.Anchored = true
-    part.CanCollide = false
-    part.Transparency = 1
-    part.Size = Vector3.new(0.1, 0.1, 0.1)
-    part.Parent = Workspace
-    return part
-end
-
-local function cleanupAutostomp()
-    if autostompState.followPart then
-        autostompState.followPart:Destroy()
-        autostompState.followPart = nil
-    end
-    autostompState.stompCounter = 0
-    autostompState.lastStompTime = nil
-    autostompState.stopAutostomp = false
-    autostompState.forceStompActive = false
-    if Camera and Humanoid then
-        Camera.CameraSubject = Humanoid
-    end
-    if autostompState.boxESP then
-        DestroyBoxESP(autostompState.boxESP)
-        autostompState.boxESP = nil
-    end
-end
-
-local function performStomp()
-    if autostompState.stopAutostomp then
-        cleanupAutostomp()
-        return
-    end
-    ReplicatedStorage.MainEvent:FireServer("Stomp")
-    if ReplicatedStorage:FindFirstChild("assets") and ReplicatedStorage.assets:FindFirstChild("dh") then
-        ReplicatedStorage.assets.dh.MainEvent:FireServer("Stomp")
-    end
-    if autostompState.stompCounter > 0 then
-        autostompState.stompCounter = autostompState.stompCounter - 1
-        autostompState.lastStompTime = tick()
-        if autostompState.stompCounter <= 0 then
-            cleanupAutostomp()
-        end
-    else
-        autostompState.lastStompTime = tick()
-    end
-end
-
-local function GetRagdollPart(char)
-    if not char or not char.Parent or not char:IsDescendantOf(Workspace) then return nil end
-
-    local upperTorso = char:FindFirstChild("UpperTorso")
-    if upperTorso then return upperTorso end
-
-    for _, partName in ipairs(SilentAim.TargetParts) do
-        if partName == "HumanoidRootPart" then continue end
-        if partName:find("Legs") then
-            local combinedPart = GetCombinedPart(char, partName)
-            if combinedPart then return combinedPart end
-        else
-            local part = char:FindFirstChild(partName)
-            if part then return part end
-        end
-    end
-
-    return nil
-end
-
--- New: PerformForceStomp function
-local function PerformForceStomp()
-    if not SilentAim.Selected or not SilentAim.Selected.Character then
-        Library:Notify({
-            Title = "ForceStomp",
-            Description = "No target selected",
-            Time = 3
-        })
-        return
-    end
-
-    local targetPlayer = SilentAim.Selected
-    local char = targetPlayer.Character
-    local bodyEffects = char:FindFirstChild("BodyEffects")
-    local ko = bodyEffects and bodyEffects:FindFirstChild("K.O")
-    local humanoid = char:FindFirstChild("Humanoid")
-
-    if not bodyEffects or not ko or not ko.Parent or not humanoid or not humanoid.Parent then
-        Library:Notify({
-            Title = "ForceStomp",
-            Description = "Target missing required components",
-            Time = 3
-        })
-        return
-    end
-
-    if not ko.Value or humanoid.Health <= 0 then
-        Library:Notify({
-            Title = "ForceStomp",
-            Description = "Target is not in K.O. state or is dead",
-            Time = 3
-        })
-        return
-    end
-
-    local ragdollPart = GetRagdollPart(char)
-    if not ragdollPart then
-        Library:Notify({
-            Title = "ForceStomp",
-            Description = "No valid ragdoll part found",
-            Time = 3
-        })
-        return
-    end
-
-    if not Char or not Char.Parent or not Char:IsDescendantOf(Workspace) or not HRP or not HRP.Parent or not Humanoid then
-        Library:Notify({
-            Title = "ForceStomp",
-            Description = "Local player components missing",
-            Time = 3
-        })
-        return
-    end
-
-    if not autostompState.followPart then
-        autostompState.followPart = createFollowPart()
-        autostompState.lastStompTime = tick()
-        autostompState.stopAutostomp = false
-        autostompState.forceStompActive = true
-    end
-
-    local currentTargetPosition = ragdollPart.Position
-    local originalCFrame = HRP.CFrame
-    local newCFrame = CFrame.new(currentTargetPosition + Vector3.new(0, SilentAim.AutostompYOffset, 0))
-
-    autostompState.followPart.CFrame = originalCFrame + Vector3.new(0, 1.5, 0)
-    Camera.CameraSubject = autostompState.followPart
-
-    HRP.CFrame = newCFrame
-    RunService.RenderStepped:Wait()
-    HRP.CFrame = originalCFrame
-
-    if not autostompState.boxESP then
-        autostompState.boxESP = CreateBoxESP()
-    end
-    UpdateBoxESP(autostompState.boxESP, newCFrame.Position)
-
-    performStomp()
-end
-
--- General Tab: Core Aimbot Settings
-local AimbotToggle = GeneralTabContent:AddToggle("AimbotEnabled", {
-    Text = "Enable Aimbot",
-    Default = SilentAim.Enabled,
-    Tooltip = "Toggles the aimbot functionality",
-    Callback = function(Value)
-        SilentAim.Enabled = Value
-        Library:Notify({
-            Title = "Aimbot",
-            Description = "Aimbot " .. (Value and "enabled" or "disabled"),
-            Time = 3
-        })
-        if not Value then
-            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
-            autostompState.autostompAppliedToTarget = {}
-            cleanupAutostomp()
-        end
-    end
-})
-
-local TargetKeybind = AimbotToggle:AddKeyPicker("TargetKeybind", {
-    Default = tostring(SilentAim.Keybind):match("Enum%.KeyCode%.(.+)") or "Q",
-    Text = "Target Selection Key",
-    Mode = "Toggle",
-    Tooltip = "Key to select/deselect target",
-    Callback = function(Value)
-        -- Handled in InputBegan
-    end
-})
-
-GeneralTabContent:AddDropdown("DefaultAimPart", {
-    Text = "Default Aim Part",
-    Values = SilentAim.TargetParts,
-    Default = SilentAim.DefaultAimPart,
-    Tooltip = "Body part to aim at by default",
-    Callback = function(Value)
-        SilentAim.DefaultAimPart = Value
-        Library:Notify({
-            Title = "Default Aim Part",
-            Description = "Set to " .. Value,
-            Time = 3
-        })
-    end
-})
-
-GeneralTabContent:AddDropdown("JumpAimPart", {
-    Text = "Jump Aim Part",
-    Values = {"UpperLegs", "LowerLegs", "Legs", "Head", "UpperTorso"},
-    Default = SilentAim.JumpAimPart,
-    Tooltip = "Body part to aim at when enemy is jumping",
-    Callback = function(Value)
-        SilentAim.JumpAimPart = Value
-        Library:Notify({
-            Title = "Jump Aim Part",
-            Description = "Set to " .. Value,
-            Time = 3
-        })
-    end
-})
-
-local ResolverToggle = GeneralTabContent:AddToggle("ResolverEnabled", {
-    Text = "Enable Resolver",
-    Default = SilentAim.ResolverEnabled,
-    Tooltip = "Toggles the resolver functionality",
-    Callback = function(Value)
-        SilentAim.ResolverEnabled = Value
-        Library:Notify({
-            Title = "Resolver",
-            Description = "Resolver " .. (Value and "enabled" or "disabled"),
-            Time = 3
-        })
-    end
-})
-
-local ResolverKeybind = ResolverToggle:AddKeyPicker("ResolverModeKeybind", {
-    Default = tostring(SilentAim.ResolverKeybind):match("Enum%.KeyCode%.(.+)") or "J",
-    Text = "Resolver Mode Key",
-    Mode = "Toggle",
-    Tooltip = "Key to cycle resolver modes",
-    Callback = function(Value)
-        -- Handled in InputBegan
-    end
-})
-
-GeneralTabContent:AddDropdown("ResolverMode", {
-    Text = "Resolver Mode",
-    Values = {"Velocity", "MoveDirection", "CalculateCFrame"},
-    Default = SilentAim.ResolverMode,
-    Tooltip = "Selects the prediction method for aiming",
-    Callback = function(Value)
-        SilentAim.ResolverMode = Value
-        Library:Notify({
-            Title = "Resolver Mode",
-            Description = "Set to " .. Value,
-            Time = 3
-        })
-    end
-})
-
-GeneralTabContent:AddInput("PredictionValue", {
-    Text = "Default Prediction Value",
-    Default = tostring(SilentAim.DefaultPrediction),
-    Numeric = true,
-    Placeholder = "Enter prediction value (e.g., 0.16)",
-    Tooltip = "Sets the default prediction value for aimbot",
-    Callback = function(Value)
-        local numValue = tonumber(Value)
-        if numValue and numValue >= 0 then
-            SilentAim.DefaultPrediction = numValue
-            Library:Notify({
-                Title = "Prediction",
-                Description = "Default set to " .. numValue,
-                Time = 3
-            })
-        else
-            Library:Notify({
-                Title = "Prediction",
-                Description = "Invalid value, must be a positive number",
-                Time = 3
-            })
-        end
-    end
-})
-
--- New: ForcePrediction Settings
-local ForcePredictionToggle = GeneralTabContent:AddToggle("ForcePredictionEnabled", {
-    Text = "Enable Force Prediction",
-    Default = SilentAim.ForcePredictionEnabled,
-    Tooltip = "Allows switching prediction configs via keybind",
-    Callback = function(Value)
-        SilentAim.ForcePredictionEnabled = Value
-        SilentAim.CurrentPredictionConfigIndex = 1
-        SilentAim.CustomPredictionValue = nil
-        Library:Notify({
-            Title = "Force Prediction",
-            Description = "Force Prediction " .. (Value and "enabled" or "disabled"),
-            Time = 3
-        })
-    end
-})
-
-local ForcePredictionKeybind = ForcePredictionToggle:AddKeyPicker("ForcePredictionKeybind", {
-    Default = tostring(SilentAim.ForcePredictionKeybind):match("Enum%.KeyCode%.(.+)") or "P",
-    Text = "Prediction Switch Key",
-    Mode = "Toggle",
-    Tooltip = "Key to cycle prediction configs",
-    Callback = function(Value)
-        -- Handled in InputBegan
-    end
-})
-
-GeneralTabContent:AddInput("ForcePredictionValue", {
-    Text = "Custom Prediction Value",
-    Default = "0.16",
-    Numeric = true,
-    Placeholder = "Enter custom prediction value (e.g., 0.16)",
-    Tooltip = "Sets a custom prediction value when Force Prediction is enabled",
-    Callback = function(Value)
-        if not SilentAim.ForcePredictionEnabled then return end
-        local numValue = tonumber(Value)
-        if numValue and numValue >= 0 then
-            SilentAim.CustomPredictionValue = numValue
-            SilentAim.CurrentPredictionConfigIndex = 0 -- 0 means custom value is used
-            Library:Notify({
-                Title = "Force Prediction",
-                Description = "Custom prediction set to " .. numValue,
-                Time = 3
-            })
-        else
-            Library:Notify({
-                Title = "Force Prediction",
-                Description = "Invalid value, must be a positive number",
-                Time = 3
-            })
-        end
-    end
-})
-
-GeneralTabContent:AddToggle("VisibleCheck", {
-    Text = "Visible Check",
-    Default = SilentAim.VisibleCheck,
-    Tooltip = "Only targets visible enemies",
-    Callback = function(Value)
-        SilentAim.VisibleCheck = Value
-        Library:Notify({
-            Title = "Visible Check",
-            Description = Value and "Enabled" or "Disabled",
-            Time = 3
-        })
-    end
-})
-
-GeneralTabContent:AddToggle("IgnoreRagdoll", {
-    Text = "Ignore Ragdoll",
-    Default = SilentAim.IgnoreRagdoll,
-    Tooltip = "Ignores knocked-out enemies",
-    Callback = function(Value)
-        SilentAim.IgnoreRagdoll = Value
-        Library:Notify({
-            Title = "Ignore Ragdoll",
-            Description = Value and "Enabled" or "Disabled",
-            Time = 3
-        })
-    end
-})
-
-GeneralTabContent:AddToggle("IgnoreGrabbed", {
-    Text = "Ignore Grabbed",
-    Default = SilentAim.IgnoreGrabbed,
-    Tooltip = "Ignores enemies being grabbed",
-    Callback = function(Value)
-        SilentAim.IgnoreGrabbed = Value
-        Library:Notify({
-            Title = "Ignore Grabbed",
-            Description = Value and "Enabled" or "Disabled",
-            Time = 3
-        })
-    end
-})
-
-GeneralTabContent:AddToggle("WallCheck", {
-    Text = "Wall Check",
-    Default = SilentAim.WallCheck,
-    Tooltip = "Checks for walls between you and the target",
-    Callback = function(Value)
-        SilentAim.WallCheck = Value
-        Library:Notify({
-            Title = "Wall Check",
-            Description = Value and "Enabled" or "Disabled",
-            Time = 3
-        })
-    end
-})
-
--- Visuals Tab: Tracer and Autostomp Visuals
-local TracerToggle = VisualsTabContent:AddToggle("TracerEnabled", {
-    Text = "Enable Tracer",
-    Default = SilentAim.TracerEnabled,
-    Tooltip = "Toggles the tracer visibility",
-    Callback = function(Value)
-        SilentAim.TracerEnabled = Value
-        if not Beam then
-            InitBeam()
-        end
-        if Beam then
-            Beam.Enabled = Value and Check()
-        end
-        Library:Notify({
-            Title = "Tracer",
-            Description = "Tracer " .. (Value and "enabled" or "disabled"),
-            Time = 3
-        })
-    end
-})
-
-TracerToggle:AddColorPicker("TracerColor", {
-    Default = SilentAim.TracerColor,
-    Title = "Tracer Color",
-    Transparency = 0,
-    Callback = function(Value)
-        SilentAim.TracerColor = Value
-        if Beam then
-            Beam.Color = ColorSequence.new(Value)
-        end
-        Library:Notify({
-            Title = "Tracer Color",
-            Description = "Color updated",
-            Time = 3
-        })
-    end
-})
-
-VisualsTabContent:AddSlider("TracerThickness", {
-    Text = "Tracer Thickness",
-    Default = SilentAim.TracerThickness,
-    Min = 0.1,
-    Max = 2.0,
-    Rounding = 1,
-    Suffix = " units",
-    Tooltip = "Adjust the thickness of the tracer",
-    Callback = function(Value)
-        SilentAim.TracerThickness = Value
-        if Beam then
-            Beam.Width0 = Value
-            Beam.Width1 = Value
-        end
-        Library:Notify({
-            Title = "Tracer Thickness",
-            Description = "Set to " .. Value .. " units",
-            Time = 3
-        })
-    end
-})
-
-local AutostompVisualToggle = VisualsTabContent:AddToggle("AutostompVisualEnabled", {
-    Text = "Enable Autostomp Visual",
-    Default = SilentAim.AutostompVisualEnabled,
-    Tooltip = "Toggles the visualization of desync position during autostomp",
-    Callback = function(Value)
-        SilentAim.AutostompVisualEnabled = Value
-        Library:Notify({
-            Title = "Autostomp Visual",
-            Description = "Autostomp Visual " .. (Value and "enabled" or "disabled"),
-            Time = 3
-        })
-        if not Value and autostompState.boxESP then
-            DestroyBoxESP(autostompState.boxESP)
-            autostompState.boxESP = nil
-        end
-    end
-})
-
-AutostompVisualToggle:AddColorPicker("AutostompVisualColor", {
-    Default = SilentAim.AutostompVisualColor,
-    Title = "Autostomp Visual Color",
-    Transparency = 0,
-    Callback = function(Value)
-        SilentAim.AutostompVisualColor = Value
-        Library:Notify({
-            Title = "Autostomp Visual Color",
-            Description = "Color updated",
-            Time = 3
-        })
-    end
-})
-
--- Misc Tab: Autostomp, ForceStomp, and Rapid Fire
-local AutostompToggle = MiscTabContent:AddToggle("AutostompEnabled", {
-    Text = "Enable Autostomp",
-    Default = SilentAim.AutostompEnabled,
-    Tooltip = "Toggles the autostomp functionality as part of aimbot",
-    Callback = function(Value)
-        SilentAim.AutostompEnabled = Value
-        Library:Notify({
-            Title = "Autostomp",
-            Description = "Autostomp " .. (Value and "enabled" or "disabled"),
-            Time = 3
-        })
-        if not Value then
-            autostompState.autostompAppliedToTarget = {}
-            cleanupAutostomp()
-        end
-    end
-})
-
-local ForceStompKeybind = AutostompToggle:AddKeyPicker("ForceStompKeybind", {
-    Default = tostring(SilentAim.ForceStompKeybind):match("Enum%.KeyCode%.(.+)") or "V",
-    Text = "Force Stomp Key",
-    Mode = "Hold",
-    Tooltip = "Key to manually perform a stomp on a K.O. target",
-    Callback = function(Value)
-        -- Handled in InputBegan
-    end
-})
-
-MiscTabContent:AddInput("AutostompCount", {
-    Text = "Stomp Count",
-    Default = tostring(SilentAim.AutostompCount),
-    Numeric = true,
-    Placeholder = "Enter stomp count (e.g., 5)",
-    Tooltip = "Sets the number of stomps to perform",
-    Callback = function(Value)
-        local numValue = tonumber(Value)
-        if numValue and numValue >= 1 then
-            SilentAim.AutostompCount = numValue
-            Library:Notify({
-                Title = "Autostomp Count",
-                Description = "Set to " .. numValue,
-                Time = 3
-            })
-        else
-            Library:Notify({
-                Title = "Autostomp Count",
-                Description = "Invalid value, must be a positive integer",
-                Time = 3
-            })
-        end
-    end
-})
-
-MiscTabContent:AddInput("AutostompInterval", {
-    Text = "Stomp Interval",
-    Default = tostring(SilentAim.AutostompInterval),
-    Numeric = true,
-    Placeholder = "Enter interval (e.g., 0.1)",
-    Tooltip = "Sets the interval between stomps in seconds",
-    Callback = function(Value)
-        local numValue = tonumber(Value)
-        if numValue and numValue >= 0 then
-            SilentAim.AutostompInterval = numValue
-            Library:Notify({
-                Title = "Autostomp Interval",
-                Description = "Set to " .. numValue .. " seconds",
-                Time = 3
-            })
-        else
-            Library:Notify({
-                Title = "Autostomp Interval",
-                Description = "Invalid value, must be a positive number",
-                Time = 3
-            })
-        end
-    end
-})
-
-MiscTabContent:AddInput("AutostompYOffset", {
-    Text = "Y Offset",
-    Default = tostring(SilentAim.AutostompYOffset),
-    Numeric = true,
-    Placeholder = "Enter Y offset (e.g., 2)",
-    Tooltip = "Sets the Y offset for desync position above the target",
-    Callback = function(Value)
-        local numValue = tonumber(Value)
-        if numValue and numValue >= 0 then
-            SilentAim.AutostompYOffset = numValue
-            Library:Notify({
-                Title = "Autostomp Y Offset",
-                Description = "Set to " .. numValue,
-                Time = 3
-            })
-        else
-            Library:Notify({
-                Title = "Autostomp Y Offset",
-                Description = "Invalid value, must be a positive number",
-                Time = 3
-            })
-        end
-    end
-})
-
-local RapidFireToggle = MiscTabContent:AddToggle("RapidFireEnabled", {
-    Text = "Enable Rapid Fire",
-    Default = false,
-    Tooltip = "Toggles rapid fire functionality",
-    Callback = function(Value)
-        rapidFireEnabled = Value
-        Library:Notify({
-            Title = "Rapid Fire",
-            Description = "Rapid Fire " .. (Value and "enabled" or "disabled"),
-            Time = 3
-        })
-    end
-})
-
-MiscTabContent:AddDropdown("RapidFireMode", {
-    Text = "Rapid Fire Mode",
-    Values = {"Legit", "Rage"},
-    Default = "Rage",
-    Tooltip = "Selects the rapid fire mode",
-    Callback = function(Value)
-        rapidFireMode = Value
-        Library:Notify({
-            Title = "Rapid Fire Mode",
-            Description = "Set to " .. Value,
-            Time = 3
-        })
-    end
-})
-
-MiscTabContent:AddInput("RapidFireDelay", {
-    Text = "Rapid Fire Delay",
-    Default = "0.05",
-    Numeric = true,
-    Placeholder = "Enter delay (e.g., 0.05)",
-    Tooltip = "Sets the delay between shots for rapid fire",
-    Callback = function(Value)
-        local numValue = tonumber(Value)
-        if numValue and numValue >= 0 then
-            minFireDelay = numValue
-            Library:Notify({
-                Title = "Rapid Fire Delay",
-                Description = "Set to " .. numValue,
-                Time = 3
-            })
-        else
-            Library:Notify({
-                Title = "Rapid Fire Delay",
-                Description = "Invalid value, must be a positive number",
-                Time = 3
-            })
-        end
-    end
-})
-
--- Sound Detection for sounds containing "blood" in the name
-Workspace.DescendantAdded:Connect(function(descendant)
-    if (not SilentAim.AutostompEnabled and not autostompState.forceStompActive) or not autostompState.followPart then return end
-    if not descendant:IsA("Sound") then return end
-
-    if not string.find(descendant.Name:lower(), "blood", 1, true) then return end
-
-    local targetPlayer = SilentAim.Selected
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character.Parent or not targetPlayer.Character:IsDescendantOf(Workspace) then return end
-
-    local targetPart = GetRagdollPart(targetPlayer.Character)
-    if not targetPart then return end
-
-    local distance = (targetPart.Position - HRP.Position).Magnitude
-    if distance <= SilentAim.AutostompSoundCheckRadius then
-        autostompState.stopAutostomp = true
-        Library:Notify({
-            Title = "Autostomp",
-            Description = "Blood sound detected (" .. descendant.Name .. "), stopping stomp",
-            Time = 3
-        })
-    end
-end)
-
--- Aimbot Functions
-local function GetPredictionForDistance(distance)
-    if SilentAim.ForcePredictionEnabled then
-        if SilentAim.CurrentPredictionConfigIndex == 0 and SilentAim.CustomPredictionValue then
-            return SilentAim.CustomPredictionValue, SilentAim.CustomPredictionValue
-        elseif SilentAim.CurrentPredictionConfigIndex > 0 then
-            local configIndex = SilentAim.CurrentPredictionConfigIndex
-            if configIndex > #SilentAim.PredictionConfigs then
-                configIndex = 1
-                SilentAim.CurrentPredictionConfigIndex = 1
-            end
-            local config = SilentAim.PredictionConfigs[configIndex]
-            return config.PredictionXZ, config.PredictionY
-        end
-    end
-
-    if not SilentAim.MultiConfigPredictionEnabled then
-        return SilentAim.DefaultPrediction, SilentAim.DefaultPrediction
-    end
-    local selectedConfig = SilentAim.PredictionConfigs[1]
-    for _, config in ipairs(SilentAim.PredictionConfigs) do
-        if distance <= config.Distance then
-            selectedConfig = config
-            break
-        end
-    end
-    return selectedConfig.PredictionXZ, selectedConfig.PredictionY
-end
-
-local function getPredictedPosition(targetPlayer)
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("Humanoid") then return nil end
-    local aimPart = SilentAim.SelectedPart or targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not aimPart then return nil end
-    local aimPartPos = aimPart.Position
-    if not lastPosition or not lastUpdateTime then
-        lastPosition = aimPartPos
-        lastUpdateTime = tick()
-        return aimPartPos
-    end
-    local currentTime = tick()
-    local deltaTime = currentTime - lastUpdateTime
-    local localRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local distance = localRoot and (localRoot.Position - aimPartPos).Magnitude or math.huge
-    local predictionXZ, predictionY = GetPredictionForDistance(distance)
-    if SilentAim.ResolverEnabled then
-        if SilentAim.ResolverMode == "Velocity" then
-            local velocity = aimPart.Velocity
-            return aimPartPos + Vector3.new(velocity.X * predictionXZ, velocity.Y * predictionY, velocity.Z * predictionXZ)
-        elseif SilentAim.ResolverMode == "MoveDirection" then
-            return aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (predictionXZ * 10))
-        elseif SilentAim.ResolverMode == "CalculateCFrame" then
-            if (aimPartPos - lastPosition).Magnitude < 0.001 then
-                return aimPartPos
-            else
-                local distance = (aimPartPos - lastPosition).Magnitude
-                local predictedDistance = (distance / deltaTime) * (0.1 * (predictionXZ * 10))
-                local predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
-                local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * predictionY)
-                predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
-                lastUpdateTime = currentTime
-                lastPosition = aimPartPos
-                return predictedPosition
-            end
-        end
-    else
-        return aimPartPos
-    end
-    return nil
-end
-
-local function IsPartVisible(part, char)
-    if not part or not char or not Camera then return false end
-    local origin = Camera.CFrame.Position
-    local _, onScreen = Camera:WorldToViewportPoint(part.Position)
-    if onScreen then
-        local rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-        rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
-        local result = Workspace:Raycast(origin, part.Position - origin, rayParams)
-        return not result or result.Instance:IsDescendantOf(char)
-    end
-    return false
-end
-
-local function IsWhitelisted(player)
-    if not SilentAim.WhitelistEnabled then return true end
-    for _, namePart in ipairs(SilentAim.Whitelist) do
-        if string.find(player.Name:lower(), namePart:lower(), 1, true) then return true end
-    end
-    return false
-end
-
-local function GetCombinedPart(char, partType)
-    if not char then return nil end
-    local leftPart, rightPart
-    if partType == "UpperLegs" then
-        leftPart = char:FindFirstChild("LeftUpperLeg")
-        rightPart = char:FindFirstChild("RightUpperLeg")
-    elseif partType == "LowerLegs" then
-        leftPart = char:FindFirstChild("LeftLowerLeg")
-        rightPart = char:FindFirstChild("RightLowerLeg")
-    elseif partType == "Legs" then
-        leftPart = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("LeftLowerLeg")
-        rightPart = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("RightLowerLeg")
-    end
-    if not leftPart or not rightPart then return nil end
-    local combinedPart = Instance.new("Part")
-    combinedPart.Size = Vector3.new(0.1, 0.1, 0.1)
-    combinedPart.Transparency = 1
-    combinedPart.CanCollide = false
-    combinedPart.Anchored = true
-    combinedPart.Position = (leftPart.Position + rightPart.Position) / 2
-    combinedPart.Velocity = (leftPart.Velocity + rightPart.Velocity) / 2
-    return combinedPart
-end
-
-local function ClosestPart(char)
-    if not char or not char.Parent or not char:IsDescendantOf(Workspace) or not char:FindFirstChild("Humanoid") or not Camera then return nil end
-    local isJumping = char.Humanoid:GetState() == Enum.HumanoidStateType.Jumping
-    if isJumping and SilentAim.JumpAimPart then
-        local jumpPart = char:FindFirstChild(SilentAim.JumpAimPart) or (SilentAim.JumpAimPart:find("Legs") and GetCombinedPart(char, SilentAim.JumpAimPart))
-        if jumpPart and (not SilentAim.WallCheck or IsPartVisible(jumpPart, char)) then
-            local _, onScreen = Camera:WorldToViewportPoint(jumpPart.Position)
-            if onScreen then return jumpPart end
-        end
-    end
-    local defaultPart = char:FindFirstChild(SilentAim.DefaultAimPart) or (SilentAim.DefaultAimPart:find("Legs") and GetCombinedPart(char, SilentAim.DefaultAimPart))
-    if defaultPart and (not SilentAim.WallCheck or IsPartVisible(defaultPart, char)) then
-        local _, onScreen = Camera:WorldToViewportPoint(defaultPart.Position)
-        if onScreen then return defaultPart end
-    end
-    for _, partName in ipairs(SilentAim.TargetParts) do
-        if not char.Parent or not char:IsDescendantOf(Workspace) then return nil end
-        local part = char:FindFirstChild(partName) or (partName:find("Legs") and GetCombinedPart(char, partName))
-        if part and (not SilentAim.WallCheck or IsPartVisible(part, char)) then
-            local _, onScreen = Camera:WorldToViewportPoint(part.Position)
-            if onScreen then return part end
-        end
-    end
-    return nil
-end
-
-local function ReacquireTarget()
-    if not SilentAim.KeepTargetOnDeath then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        return
-    end
-    if SilentAim.ReacquisitionMode == "Immediate" then
-        if SilentAim.PreviousTarget and SilentAim.PreviousTarget.Parent and SilentAim.PreviousTarget:IsDescendantOf(Players) then
-            local player = SilentAim.PreviousTarget
-            if player.Character and player.Character.Parent and player.Character:IsDescendantOf(Workspace) then
-                SilentAim.Selected = player
-                SilentAim.SelectedPart = ClosestPart(player.Character)
-            else
-                local connection
-                connection = player.CharacterAdded:Connect(function(char)
-                    if not player or not player.Parent or not player:IsDescendantOf(Players) then
-                        connection:Disconnect()
-                        return
+-- [[ // Libraries // ]]
+	local library = {
+		Renders = {},
+		Connections = {},
+		Folder = "PuppyWare", -- Change if wanted
+		Assets = "Assets", -- Change if wanted
+		Configs = "Configs" -- Change if wanted
+	}
+	local utility = {}
+	-- [[ // Tables // ]]
+	local pages = {}
+	local sections = {}
+	-- [[ // Indexes // ]]
+	do
+		library.__index = library
+		pages.__index = pages
+		sections.__index = sections
+	end
+	-- [[ // Variables // ]] 
+	local tws = game:GetService("TweenService")
+	local uis = game:GetService("UserInputService")
+	local cre = game:GetService("CoreGui")
+	-- [[ // Functions // ]]
+	function utility:RenderObject(RenderType, RenderProperties, RenderHidden)
+		local Render = Instance.new(RenderType)
+		--
+		if RenderProperties and typeof(RenderProperties) == "table" then
+			for Property, Value in pairs(RenderProperties) do
+				if Property ~= "RenderTime" then
+					Render[Property] = Value
+				end
+			end
+		end
+		--
+		library.Renders[#library.Renders + 1] = {Render, RenderProperties, RenderHidden, RenderProperties["RenderTime"] or nil}
+		--
+		return Render
+	end
+	--
+	function utility:CreateConnection(ConnectionType, ConnectionCallback)
+		local Connection = ConnectionType:Connect(ConnectionCallback)
+		--
+		library.Connections[#library.Connections + 1] = Connection
+		--
+		return Connection
+	end
+	--
+	function utility:MouseLocation()
+		return uis:GetMouseLocation()
+	end
+	--
+	function utility:Serialise(Table)
+		local Serialised = ""
+		--
+		for Index, Value in pairs(Table) do
+			Serialised = Serialised .. Value .. ", "
+		end
+		--
+		return Serialised:sub(0, #Serialised - 2)
+	end
+	--
+	function utility:Sort(Table1, Table2)
+		local Table3 = {}
+		--
+		for Index, Value in pairs(Table2) do
+			if table.find(Table1, Index) then
+				Table3[#Table3 + 1] = Value
+			end
+		end
+		--
+		return Table3
+	end
+	-- [[ // UI Functions // ]]
+	function library:CreateWindow(Properties)
+		Properties = Properties or {}
+		--
+		local Window = {
+			Pages = {},
+			Accent = Color3.fromRGB(255, 120, 30), -- Color3.fromRGB(136, 180, 57) -- Change if wanted
+			Enabled = true,
+			Key = Enum.KeyCode.Z, -- Change if wanted
+			Dragging = false,
+			DragOffset = Vector2.new(0, 0)
+		}
+		--
+		do
+			local ScreenGui = utility:RenderObject("ScreenGui", {
+				DisplayOrder = 9999,
+				Enabled = true,
+				IgnoreGuiInset = true,
+				Parent = cre,
+				ResetOnSpawn = false,
+				ZIndexBehavior = "Global"
+			})
+			-- //
+			local ScreenGui_MainFrame = utility:RenderObject("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundColor3 = Color3.fromRGB(25, 25, 25),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(12, 12, 12),
+				BorderMode = "Inset",
+				BorderSizePixel = 1,
+				Parent = ScreenGui,
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+				Size = UDim2.new(0, 660, 0, 560)
+			})
+			-- //
+			local ScreenGui_MainFrame_InnerBorder = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = ScreenGui_MainFrame,
+				Position = UDim2.new(0, 1, 0, 1),
+				Size = UDim2.new(1, -2, 1, -2)
+			})
+			-- //
+			local MainFrame_InnerBorder_InnerFrame = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(60, 60, 60),
+				BorderMode = "Inset",
+				BorderSizePixel = 1,
+				Parent = ScreenGui_MainFrame,
+				Position = UDim2.new(0, 3, 0, 3),
+				Size = UDim2.new(1, -6, 1, -6)
+			})
+			-- //
+			local InnerBorder_InnerFrame_Tabs = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = MainFrame_InnerBorder_InnerFrame,
+				Position = UDim2.new(0, 0, 0, 4),
+				Size = UDim2.new(0, 74, 1, -4)
+			})
+			--
+			local InnerBorder_InnerFrame_Pages = utility:RenderObject("Frame", {
+				AnchorPoint = Vector2.new(1, 0),
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = MainFrame_InnerBorder_InnerFrame,
+				Position = UDim2.new(1, 0, 0, 4),
+				Size = UDim2.new(1, -73, 1, -4)
+			})
+			--
+			local InnerBorder_InnerFrame_TopGradient = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = MainFrame_InnerBorder_InnerFrame,
+				Position = UDim2.new(0, 0, 0, 0),
+				Size = UDim2.new(1, 0, 0, 4)
+			})
+			-- //
+			local InnerFrame_Tabs_List = utility:RenderObject("UIListLayout", {
+				Padding = UDim.new(0, 4),
+				Parent = InnerBorder_InnerFrame_Tabs,
+				FillDirection = "Vertical",
+				HorizontalAlignment = "Left",
+				VerticalAlignment = "Top"
+			})
+			--
+			local InnerFrame_Tabs_Padding = utility:RenderObject("UIPadding", {
+				Parent = InnerBorder_InnerFrame_Tabs,
+				PaddingTop = UDim.new(0, 9)
+			})
+			--
+			local InnerFrame_Pages_InnerBorder = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(45, 45, 45),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = InnerBorder_InnerFrame_Pages,
+				Position = UDim2.new(0, 1, 0, 0),
+				Size = UDim2.new(1, -1, 1, 0)
+			})
+			--
+			local InnerFrame_TopGradient_Gradient = utility:RenderObject("ImageLabel", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = InnerBorder_InnerFrame_TopGradient,
+				Position = UDim2.new(0, 1, 0, 1),
+				Size = UDim2.new(1, -2, 1, -2),
+				Image = "rbxassetid://8508019876",
+				ImageColor3 = Color3.fromRGB(255, 255, 255)
+			})
+			-- //
+			local Pages_InnerBorder_InnerFrame = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = InnerFrame_Pages_InnerBorder,
+				Position = UDim2.new(0, 1, 0, 0),
+				Size = UDim2.new(1, -1, 1, 0)
+			})
+			-- //
+			local InnerBorder_InnerFrame_Folder = utility:RenderObject("Folder", {
+				Parent = Pages_InnerBorder_InnerFrame
+			})
+			--
+			local InnerBorder_InnerFrame_Pattern = utility:RenderObject("ImageLabel", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Pages_InnerBorder_InnerFrame,
+				Position = UDim2.new(0, 0, 0, 0),
+				Size = UDim2.new(1, 0, 1, 0),
+				Image = "rbxassetid://8547666218",
+				ImageColor3 = Color3.fromRGB(12, 12, 12),
+				ScaleType = "Tile",
+				TileSize = UDim2.new(0, 8, 0, 8)
+			})
+			--
+			do -- // Functions
+				function Window:SetPage(Page)
+					for index, page in pairs(Window.Pages) do
+						if page.Open and page ~= Page then
+							page:Set(false)
+						end
+					end
+				end
+				--
+				function Window:Fade(state)
+					for index, render in pairs(library.Renders) do
+						if not render[3] then
+							if render[1].ClassName == "Frame" and (render[2]["BackgroundTransparency"] or 0) ~= 1 then
+								tws:Create(render[1], TweenInfo.new(render[4] or 0.25, Enum.EasingStyle["Linear"], state and Enum.EasingDirection["Out"] or Enum.EasingDirection["In"]), {BackgroundTransparency = state and (render[2]["BackgroundTransparency"] or 0) or 1}):Play()
+							elseif render[1].ClassName == "ImageLabel" then
+								if (render[2]["BackgroundTransparency"] or 0) ~= 1 then
+									tws:Create(render[1], TweenInfo.new(render[4] or 0.25, Enum.EasingStyle["Linear"], state and Enum.EasingDirection["Out"] or Enum.EasingDirection["In"]), {BackgroundTransparency = state and (render[2]["BackgroundTransparency"] or 0) or 1}):Play()
+								end
+								--
+								if (render[2]["ImageTransparency"] or 0) ~= 1 then
+									tws:Create(render[1], TweenInfo.new(render[4] or 0.25, Enum.EasingStyle["Linear"], state and Enum.EasingDirection["Out"] or Enum.EasingDirection["In"]), {ImageTransparency = state and (render[2]["ImageTransparency"] or 0) or 1}):Play()
+								end
+							elseif render[1].ClassName == "TextLabel" then
+								if (render[2]["BackgroundTransparency"] or 0) ~= 1 then
+									tws:Create(render[1], TweenInfo.new(render[4] or 0.25, Enum.EasingStyle["Linear"], state and Enum.EasingDirection["Out"] or Enum.EasingDirection["In"]), {BackgroundTransparency = state and (render[2]["BackgroundTransparency"] or 0) or 1}):Play()
+								end
+								--
+								if (render[2]["TextTransparency"] or 0) ~= 1 then
+									tws:Create(render[1], TweenInfo.new(render[4] or 0.25, Enum.EasingStyle["Linear"], state and Enum.EasingDirection["Out"] or Enum.EasingDirection["In"]), {TextTransparency = state and (render[2]["TextTransparency"] or 0) or 1}):Play()
+								end
+							elseif render[1].ClassName == "ScrollingFrame" then
+								if (render[2]["BackgroundTransparency"] or 0) ~= 1 then
+									tws:Create(render[1], TweenInfo.new(render[4] or 0.25, Enum.EasingStyle["Linear"], state and Enum.EasingDirection["Out"] or Enum.EasingDirection["In"]), {BackgroundTransparency = state and (render[2]["BackgroundTransparency"] or 0) or 1}):Play()
+								end
+								--
+								if (render[2]["ScrollBarImageTransparency"] or 0) ~= 1 then
+									tws:Create(render[1], TweenInfo.new(render[4] or 0.25, Enum.EasingStyle["Linear"], state and Enum.EasingDirection["Out"] or Enum.EasingDirection["In"]), {ScrollBarImageTransparency = state and (render[2]["ScrollBarImageTransparency"] or 0) or 1}):Play()
+								end
+							end
+						end
+					end
+				end
+				--
+				function Window:Unload()
+					ScreenGui:Remove()
+					--
+					for index, connection in pairs(library.Connections) do
+						connection:Disconnect()
+					end
+					--
+					library = nil
+					utility = nil
+				end
+			end
+			--
+			do -- // Index Setting
+				Window["TabsHolder"] = InnerBorder_InnerFrame_Tabs
+				Window["PagesHolder"] = InnerBorder_InnerFrame_Folder
+			end
+			--
+			do -- // Connections
+				-- Drag and drop functionality
+				-- Создаем область для перетаскивания в верхней части окна
+				local DragArea = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+					BackgroundTransparency = 0, -- Видимый, чтобы пользователь понимал, где можно перетаскивать
+					BorderSizePixel = 0,
+					Parent = ScreenGui_MainFrame,
+					Position = UDim2.new(0, 3, 0, 3),
+					Size = UDim2.new(1, -6, 0, 25), -- Высота области перетаскивания
+					ZIndex = 3 -- Убедимся, что область находится поверх других элементов
+				})
+				
+				-- Добавляем текст с названием UI
+				local DragAreaTitle = utility:RenderObject("TextLabel", {
+					BackgroundTransparency = 1,
+					Font = Enum.Font.Code,
+					Parent = DragArea,
+					Position = UDim2.new(0, 10, 0, 0),
+					Size = UDim2.new(1, -20, 1, 0),
+					Text = "GameSense",
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextSize = 14,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					ZIndex = 4
+				})
+
+				utility:CreateConnection(DragArea.InputBegan, function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+						local MousePos = utility:MouseLocation()
+						local FramePos = ScreenGui_MainFrame.AbsolutePosition
+						-- Вычисляем смещение относительно позиции мыши внутри окна
+						Window.Dragging = true
+						Window.DragOffset = Vector2.new(
+							FramePos.X - MousePos.X,
+							FramePos.Y - MousePos.Y
+						)
+					end
+				end)
+				
+				utility:CreateConnection(DragArea.InputEnded, function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+						Window.Dragging = false
+					end
+				end)
+				
+				-- Также обрабатываем InputEnded глобально, чтобы предотвратить "залипание" перетаскивания
+				utility:CreateConnection(uis.InputEnded, function(Input)
+					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+						Window.Dragging = false
+					end
+				end)
+				
+				utility:CreateConnection(uis.InputChanged, function(Input)
+					if Window.Dragging and Input.UserInputType == Enum.UserInputType.MouseMovement then
+						-- Плавное перемещение окна
+						ScreenGui_MainFrame.Position = UDim2.new(0, utility:MouseLocation().X + Window.DragOffset.X, 0, utility:MouseLocation().Y + Window.DragOffset.Y)
+					end
+				end)
+				
+				-- Обработка глобальных нажатий клавиш
+				
+				utility:CreateConnection(uis.InputBegan, function(Input)
+					if Input.KeyCode and Input.KeyCode == Window.Key then
+						Window.Enabled = not Window.Enabled
+						--
+						Window:Fade(Window.Enabled)
+					elseif Input.KeyCode and Input.KeyCode == Enum.KeyCode.X then
+						Window:Unload()
+					end
+				end)
+			end
+		end
+		--
+		return setmetatable(Window, library)
+	end
+	--
+	function library:CreatePage(Properties)
+		Properties = Properties or {}
+		--
+		local Page = {
+			Image = (Properties.image or Properties.Image or Properties.icon or Properties.Icon),
+			Size = (Properties.size or Properties.Size or UDim2.new(0, 50, 0, 50)),
+			Open = false,
+			Window = self
+		}
+		--
+		do
+			local Page_Tab = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page.Window["TabsHolder"],
+				Size = UDim2.new(1, 0, 0, 72)
+			})
+			-- //
+			local Page_Tab_Border = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page_Tab,
+				Size = UDim2.new(1, 0, 1, 0),
+				Visible = false,
+				ZIndex = 2,
+				RenderTime = 0.15
+			})
+			--
+			local Page_Tab_Image = utility:RenderObject("ImageLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page_Tab,
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+				Size = Page.Size,
+				ZIndex = 2,
+				Image = Page.Image,
+				ImageColor3 = Color3.fromRGB(100, 100, 100)
+			})
+			--
+			local Page_Tab_Button = utility:RenderObject("TextButton", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page_Tab,
+				Size = UDim2.new(1, 0, 1, 0),
+				Text = ""
+			})
+			-- //
+			local Tab_Border_Inner = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page_Tab_Border,
+				Position = UDim2.new(0, 0, 0, 1),
+				Size = UDim2.new(1, 1, 1, -2),
+				ZIndex = 2,
+				RenderTime = 0.15
+			})
+			-- //
+			local Border_Inner_Inner = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Tab_Border_Inner,
+				Position = UDim2.new(0, 0, 0, 1),
+				Size = UDim2.new(1, 0, 1, -2),
+				ZIndex = 2,
+				RenderTime = 0.15
+			})
+			--
+			local Inner_Inner_Pattern = utility:RenderObject("ImageLabel", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Border_Inner_Inner,
+				Position = UDim2.new(0, 0, 0, 0),
+				Size = UDim2.new(1, 0, 1, 0),
+				Image = "rbxassetid://8509210785",
+				ImageColor3 = Color3.fromRGB(12, 12, 12),
+				ScaleType = "Tile",
+				TileSize = UDim2.new(0, 8, 0, 8),
+				ZIndex = 2
+			})
+			-- //
+			local Page_Page = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page.Window["PagesHolder"],
+				Position = UDim2.new(0, 20, 0, 20),
+				Size = UDim2.new(1, -40, 1, -40),
+				Visible = false
+			})
+			-- //
+			local Page_Page_Left = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page_Page,
+				Position = UDim2.new(0, 0, 0, 0),
+				Size = UDim2.new(0.5, -10, 1, 0)
+			})
+			--
+			local Page_Page_Right = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Page_Page,
+				Position = UDim2.new(0.5, 10, 0, 0),
+				Size = UDim2.new(0.5, -10, 1, 0)
+			})
+			-- //
+			local Page_Left_List = utility:RenderObject("UIListLayout", {
+				Padding = UDim.new(0, 18),
+				Parent = Page_Page_Left,
+				FillDirection = "Vertical",
+				HorizontalAlignment = "Left",
+				VerticalAlignment = "Top"
+			})
+			--
+			local Page_Right_List = utility:RenderObject("UIListLayout", {
+				Padding = UDim.new(0, 18),
+				Parent = Page_Page_Right,
+				FillDirection = "Vertical",
+				HorizontalAlignment = "Left",
+				VerticalAlignment = "Top"
+			})
+			--
+			do -- // Index Setting
+				Page["Page"] = Page_Page
+				Page["Left"] = Page_Page_Left
+				Page["Right"] = Page_Page_Right
+			end
+			--
+			do -- // Functions
+				function Page:Set(state)
+					Page.Open = state
+					--
+					Page_Page.Visible = Page.Open
+					Page_Tab_Border.Visible = Page.Open
+					Page_Tab_Image.ImageColor3 = Page.Open and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(90, 90, 90)
+					--
+					if Page.Open then
+						Page.Window:SetPage(Page)
+					end
+				end
+			end
+			--
+			do -- // Connections
+				utility:CreateConnection(Page_Tab_Button.MouseButton1Click, function(Input)
+					if not Page.Open then
+						Page:Set(true)
+					end
+				end)
+				--
+				utility:CreateConnection(Page_Tab_Button.MouseEnter, function(Input)
+					Page_Tab_Image.ImageColor3 = Color3.fromRGB(172, 172, 172)
+				end)
+				--
+				utility:CreateConnection(Page_Tab_Button.MouseLeave, function(Input)
+					Page_Tab_Image.ImageColor3 = Page.Open and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(90, 90, 90)
+				end)
+			end
+		end
+		--
+		if #Page.Window.Pages == 0 then Page:Set(true) end
+		Page.Window.Pages[#Page.Window.Pages + 1] = Page
+		return setmetatable(Page, pages)
+	end
+	--
+	function pages:CreateSection(Properties)
+		Properties = Properties or {}
+		--
+		local Section = {
+			Name = (Properties.name or Properties.Name or Properties.title or Properties.Title or "New Section"),
+			Size = (Properties.size or Properties.Size or 150),
+			Side = (Properties.side or Properties.Side or "Left"),
+			Content = {},
+			Window = self.Window,
+			Page = self
+		}
+		--
+		do
+			local Section_Holder = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(12, 12, 12),
+				BorderMode = "Inset",
+				BorderSizePixel = 1,
+				Parent = Section.Page[Section.Side],
+				Size = UDim2.new(1, 0, 0, Section.Size),
+				ZIndex = 2
+			})
+			-- //
+			local Section_Holder_Extra = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder,
+				Position = UDim2.new(0, 1, 0, 1),
+				Size = UDim2.new(1, -2, 1, -2),
+				ZIndex = 2
+			})
+			--
+			local Section_Holder_Frame = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(23, 23, 23),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder,
+				Position = UDim2.new(0, 1, 0, 1),
+				Size = UDim2.new(1, -2, 1, -2),
+				ZIndex = 2
+			})
+			--
+			local Section_Holder_TitleInline = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(23, 23, 23),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder,
+				Position = UDim2.new(0, 9, 0, -1),
+				Size = UDim2.new(0, 0, 0, 2),
+				ZIndex = 5
+			})
+			--
+			local Section_Holder_Title = utility:RenderObject("TextLabel", {
+				AnchorPoint = Vector2.new(0, 0.5),
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder,
+				Position = UDim2.new(0, 12, 0, 0),
+				Size = UDim2.new(1, -26, 0, 15),
+				ZIndex = 5,
+				Font = "Code",
+				RichText = true,
+				Text = "<b>" .. Section.Name .. "</b>",
+				TextColor3 = Color3.fromRGB(205, 205, 205),
+				TextSize = 11,
+				TextStrokeTransparency = 1,
+				TextXAlignment = "Left"
+			})
+			-- //
+			local Holder_Extra_Gradient1 = utility:RenderObject("ImageLabel", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder_Extra,
+				Position = UDim2.new(0, 1, 0, 1),
+				Rotation = 180,
+				Size = UDim2.new(1, -2, 0, 20),
+				Visible = false,
+				ZIndex = 4,
+				Image = "rbxassetid://7783533907",
+				ImageColor3 = Color3.fromRGB(23, 23, 23)
+			})
+			--
+			local Holder_Extra_Gradient2 = utility:RenderObject("ImageLabel", {
+				AnchorPoint = Vector2.new(0, 1),
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder_Extra,
+				Position = UDim2.new(0, 0, 1, 0),
+				Size = UDim2.new(1, -2, 0, 20),
+				Visible = false,
+				ZIndex = 4,
+				Image = "rbxassetid://7783533907",
+				ImageColor3 = Color3.fromRGB(23, 23, 23)
+			})
+			--
+			local Holder_Extra_ArrowUp = utility:RenderObject("TextButton", {
+				BackgroundColor3 = Color3.fromRGB(255, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder_Extra,
+				Position = UDim2.new(1, -21, 0, 0),
+				Size = UDim2.new(0, 7 + 8, 0, 6 + 8),
+				Text = "",
+                Visible = false,
+				ZIndex = 4
+			})
+			--
+			local Holder_Extra_ArrowDown = utility:RenderObject("TextButton", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder_Extra,
+				Position = UDim2.new(1, -21, 1, -(6 + 8)),
+				Size = UDim2.new(0, 7 + 8, 0, 6 + 8),
+				Text = "",
+                Visible = false,
+				ZIndex = 4
+			})
+			-- //
+			local Extra_ArrowUp_Image = utility:RenderObject("ImageLabel", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Holder_Extra_ArrowUp,
+				Position = UDim2.new(0, 4, 0, 4),
+				Size = UDim2.new(0, 7, 0, 6),
+				Visible = true,
+				ZIndex = 4,
+				Image = "rbxassetid://8548757311",
+				ImageColor3 = Color3.fromRGB(205, 205, 205)
+			})
+			--
+			local Extra_ArrowDown_Image = utility:RenderObject("ImageLabel", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Holder_Extra_ArrowDown,
+				Position = UDim2.new(0, 4, 0, 4),
+				Size = UDim2.new(0, 7, 0, 6),
+				Visible = true,
+				ZIndex = 4,
+				Image = "rbxassetid://8548723563",
+				ImageColor3 = Color3.fromRGB(205, 205, 205)
+			})
+			--
+			local Holder_Extra_Bar = utility:RenderObject("Frame", {
+				AnchorPoint = Vector2.new(1, 0),
+				BackgroundColor3 = Color3.fromRGB(45, 45, 45),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder_Extra,
+				Position = UDim2.new(1, 0, 0, 0),
+				Size = UDim2.new(0, 6, 1, 0),
+				Visible = false,
+				ZIndex = 4
+			})
+			--
+			local Holder_Extra_Line = utility:RenderObject("Frame", {
+				BackgroundColor3 = Color3.fromRGB(45, 45, 45),
+				BackgroundTransparency = 0,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder_Extra,
+				Position = UDim2.new(0, 0, 0, -1),
+				Size = UDim2.new(1, 0, 0, 1),
+				ZIndex = 4
+			})
+			--
+			local Holder_Frame_ContentHolder = utility:RenderObject("ScrollingFrame", {
+				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				Parent = Section_Holder_Frame,
+				Position = UDim2.new(0, 0, 0, 0),
+				Size = UDim2.new(1, 0, 1, 0),
+				ZIndex = 4,
+				AutomaticCanvasSize = "Y",
+				BottomImage = "rbxassetid://7783554086",
+				CanvasSize = UDim2.new(0, 0, 0, 0),
+				MidImage = "rbxassetid://7783554086",
+				ScrollBarImageColor3 = Color3.fromRGB(65, 65, 65),
+				ScrollBarImageTransparency = 0,
+				ScrollBarThickness = 5,
+				TopImage = "rbxassetid://7783554086",
+				VerticalScrollBarInset = "None"
+			})
+			-- //
+			local Frame_ContentHolder_List = utility:RenderObject("UIListLayout", {
+				Padding = UDim.new(0, 0),
+				Parent = Holder_Frame_ContentHolder,
+				FillDirection = "Vertical",
+				HorizontalAlignment = "Center",
+				VerticalAlignment = "Top"
+			})
+			--
+			local Frame_ContentHolder_Padding = utility:RenderObject("UIPadding", {
+				Parent = Holder_Frame_ContentHolder,
+				PaddingTop = UDim.new(0, 15),
+				PaddingBottom = UDim.new(0, 15)
+			})
+			--
+			do -- // Section Init
+				Section_Holder_TitleInline.Size = UDim2.new(0, Section_Holder_Title.TextBounds.X + 6, 0, 2)
+			end
+			--
+			do -- // Index Setting
+				Section["Holder"] = Holder_Frame_ContentHolder
+				Section["Extra"] = Section_Holder_Extra
+			end
+			--
+			do -- // Functions
+				function Section:CloseContent()
+					if Section.Content.Open then
+						Section.Content:Close()
+						--
+						Section.Content = {}
+					end
+				end
+			end
+			--
+			do -- // Connections
+				utility:CreateConnection(Holder_Frame_ContentHolder:GetPropertyChangedSignal("AbsoluteCanvasSize"), function()
+					Holder_Extra_Gradient1.Visible = Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y > Holder_Frame_ContentHolder.AbsoluteWindowSize.Y
+					Holder_Extra_Gradient2.Visible = Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y > Holder_Frame_ContentHolder.AbsoluteWindowSize.Y
+					Holder_Extra_Bar.Visible = Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y > Holder_Frame_ContentHolder.AbsoluteWindowSize.Y
+                    --
+                    if (Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y > Holder_Frame_ContentHolder.AbsoluteWindowSize.Y) then
+                        Holder_Extra_ArrowUp.Visible = (Holder_Frame_ContentHolder.CanvasPosition.Y > 5)
+                        Holder_Extra_ArrowDown.Visible = (Holder_Frame_ContentHolder.CanvasPosition.Y + 5 < (Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y - Holder_Frame_ContentHolder.AbsoluteSize.Y))
                     end
-                    SilentAim.Selected = player
-                    SilentAim.SelectedPart = ClosestPart(char)
-                    connection:Disconnect()
-                end)
-            end
-        else
-            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
-        end
-    elseif SilentAim.ReacquisitionMode == "Nearest" then
-        GetClosest()
-        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
-            SilentAim.PreviousTarget = SilentAim.Selected
-        end
-    elseif SilentAim.ReacquisitionMode == "Priority" then
-        for _, playerName in ipairs(SilentAim.PriorityList) do
-            local player = Players:FindFirstChild(playerName)
-            if player and player ~= LocalPlayer and player.Character and IsWhitelisted(player) then
-                local part = ClosestPart(player.Character)
-                if part and (not SilentAim.VisibleCheck or IsPartVisible(part, player.Character)) then
-                    SilentAim.Selected = player
-                    SilentAim.SelectedPart = part
-                    SilentAim.PreviousTarget = player
-                    return
-                end
-            end
-        end
-        GetClosest()
-        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
-            SilentAim.PreviousTarget = SilentAim.Selected
-        end
-    end
-end
+				end)
+				--
+				utility:CreateConnection(Holder_Frame_ContentHolder:GetPropertyChangedSignal("CanvasPosition"), function()
+					if Section.Content.Open then
+						Section.Content:Close()
+						--
+						Section.Content = {}
+					end
+                    --
+                    Holder_Extra_ArrowUp.Visible = (Holder_Frame_ContentHolder.CanvasPosition.Y > 1)
+                    Holder_Extra_ArrowDown.Visible = (Holder_Frame_ContentHolder.CanvasPosition.Y + 1 < (Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y - Holder_Frame_ContentHolder.AbsoluteSize.Y))
+				end)
+                --
+                utility:CreateConnection(Holder_Extra_ArrowUp.MouseButton1Click, function()
+					Holder_Frame_ContentHolder.CanvasPosition = Vector2.new(0, math.clamp(Holder_Frame_ContentHolder.CanvasPosition.Y - 10, 0, Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y - Holder_Frame_ContentHolder.AbsoluteSize.Y))
+				end)
+                --
+                utility:CreateConnection(Holder_Extra_ArrowDown.MouseButton1Click, function()
+					Holder_Frame_ContentHolder.CanvasPosition = Vector2.new(0, math.clamp(Holder_Frame_ContentHolder.CanvasPosition.Y + 10, 0, Holder_Frame_ContentHolder.AbsoluteCanvasSize.Y - Holder_Frame_ContentHolder.AbsoluteSize.Y))
+				end)
+			end
+		end
+		--
+		return setmetatable(Section, sections)
+	end
+	--
+	do -- // Content
+		function sections:CreateToggle(Properties)
+			Properties = Properties or {}
+			--
+			local Content = {
+				Name = (Properties.name or Properties.Name or Properties.title or Properties.Title or "New Toggle"),
+				State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or false),
+				Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
+				Window = self.Window,
+				Page = self.Page,
+				Section = self
+			}
+			--
+			do
+				local Content_Holder = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content.Section.Holder,
+					Size = UDim2.new(1, 0, 0, 8 + 10),
+					ZIndex = 3
+				})
+				-- //
+				local Content_Holder_Outline = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 20, 0, 5),
+					Size = UDim2.new(0, 8, 0, 8),
+					ZIndex = 3
+				})
+				--
+				local Content_Holder_Title = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 0),
+					Size = UDim2.new(1, -41, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Title2 = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 0),
+					Size = UDim2.new(1, -41, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextTransparency = 0.5,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Button = utility:RenderObject("TextButton", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Size = UDim2.new(1, 0, 1, 0),
+					Text = ""
+				})
+				-- //
+				local Holder_Outline_Frame = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(77, 77, 77),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder_Outline,
+					Position = UDim2.new(0, 1, 0, 1),
+					Size = UDim2.new(1, -2, 1, -2),
+					ZIndex = 3
+				})
+				-- //
+				local Outline_Frame_Gradient = utility:RenderObject("UIGradient", {
+					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(140, 140, 140)),
+					Enabled = true,
+					Rotation = 90,
+					Parent = Holder_Outline_Frame
+				})
+				--
+				do -- // Functions
+					function Content:Set(state)
+						Content.State = state
+						--
+						Holder_Outline_Frame.BackgroundColor3 = Content.State and Content.Window.Accent or Color3.fromRGB(77, 77, 77)
+						--
+						Content.Callback(Content:Get())
+					end
+					--
+					function Content:Get()
+						return Content.State
+					end
+				end
+				--
+				do -- // Connections
+					utility:CreateConnection(Content_Holder_Button.MouseButton1Click, function(Input)
+						Content:Set(not Content:Get())
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseEnter, function(Input)
+						Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 180, 180))
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseLeave, function(Input)
+						Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(140, 140, 140))
+					end)
+				end
+				--
+				Content:Set(Content.State)
+			end
+			--
+			return Content
+		end
+		--
+		function sections:CreateSlider(Properties)
+			Properties = Properties or {}
+			--
+			local Content = {
+				Name = (Properties.name or Properties.Name or Properties.title or Properties.Title or nil),
+				State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or false),
+				Min = (Properties.min or Properties.Min or Properties.minimum or Properties.Minimum or 0),
+				Max = (Properties.max or Properties.Max or Properties.maxmimum or Properties.Maximum or 100),
+				Ending = (Properties.ending or Properties.Ending or Properties.suffix or Properties.Suffix or ""),
+				Decimals = (1 / (Properties.decimals or Properties.Decimals or Properties.tick or Properties.Tick or 1)),
+				Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
+				Holding = false,
+				Window = self.Window,
+				Page = self.Page,
+				Section = self
+			}
+			--
+			do
+				local Content_Holder = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content.Section.Holder,
+					Size = UDim2.new(1, 0, 0, (Content.Name and 24 or 13) + 5),
+					ZIndex = 3
+				})
+				-- //
+				local Content_Holder_Outline = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 40, 0, Content.Name and 18 or 5),
+					Size = UDim2.new(1, -99, 0, 7),
+					ZIndex = 3
+				})
+				--
+				if Content.Name then
+					local Content_Holder_Title = utility:RenderObject("TextLabel", {
+						AnchorPoint = Vector2.new(0, 0),
+						BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+						BackgroundTransparency = 1,
+						BorderColor3 = Color3.fromRGB(0, 0, 0),
+						BorderSizePixel = 0,
+						Parent = Content_Holder,
+						Position = UDim2.new(0, 41, 0, 4),
+						Size = UDim2.new(1, -41, 0, 10),
+						ZIndex = 3,
+						Font = "Code",
+						RichText = true,
+						Text = Content.Name,
+						TextColor3 = Color3.fromRGB(205, 205, 205),
+						TextSize = 9,
+						TextStrokeTransparency = 1,
+						TextXAlignment = "Left"
+					})
+					--
+					local Content_Holder_Title2 = utility:RenderObject("TextLabel", {
+						AnchorPoint = Vector2.new(0, 0),
+						BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+						BackgroundTransparency = 1,
+						BorderColor3 = Color3.fromRGB(0, 0, 0),
+						BorderSizePixel = 0,
+						Parent = Content_Holder,
+						Position = UDim2.new(0, 41, 0, 4),
+						Size = UDim2.new(1, -41, 0, 10),
+						ZIndex = 3,
+						Font = "Code",
+						RichText = true,
+						Text = Content.Name,
+						TextColor3 = Color3.fromRGB(205, 205, 205),
+						TextSize = 9,
+						TextStrokeTransparency = 1,
+						TextTransparency = 0.5,
+						TextXAlignment = "Left"
+					})
+				end
+				--
+				local Content_Holder_Button = utility:RenderObject("TextButton", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Size = UDim2.new(1, 0, 1, 0),
+					Text = ""
+				})
+				-- //
+				local Holder_Outline_Frame = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(71, 71, 71),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder_Outline,
+					Position = UDim2.new(0, 1, 0, 1),
+					Size = UDim2.new(1, -2, 1, -2),
+					ZIndex = 3
+				})
+				-- //
+				local Outline_Frame_Slider = utility:RenderObject("Frame", {
+					BackgroundColor3 = Content.Window.Accent,
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Holder_Outline_Frame,
+					Position = UDim2.new(0, 0, 0, 0),
+					Size = UDim2.new(0, 0, 1, 0),
+					ZIndex = 3
+				})
+				--
+				local Outline_Frame_Gradient = utility:RenderObject("UIGradient", {
+					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(175, 175, 175)),
+					Enabled = true,
+					Rotation = 270,
+					Parent = Holder_Outline_Frame
+				})
+                -- //
+                local Frame_Slider_Gradient = utility:RenderObject("UIGradient", {
+					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(175, 175, 175)),
+					Enabled = true,
+					Rotation = 90,
+					Parent = Outline_Frame_Slider
+				})
+				-- //
+				local Frame_Slider_Title = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0.5, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Outline_Frame_Slider,
+					Position = UDim2.new(1, 0, 0.5, 1),
+					Size = UDim2.new(0, 2, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = "",
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextSize = 11,
+					TextStrokeTransparency = 0.5,
+					TextXAlignment = "Center",
+					RenderTime = 0.15
+				})
+				--
+				local Frame_Slider_Title2 = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0.5, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Outline_Frame_Slider,
+					Position = UDim2.new(1, 0, 0.5, 1),
+					Size = UDim2.new(0, 2, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = "",
+					TextColor3 = Color3.fromRGB(255, 255, 255),
+					TextSize = 11,
+					TextStrokeTransparency = 0.5,
+					TextTransparency = 0,
+					TextXAlignment = "Center",
+					RenderTime = 0.15
+				})
+				--
+				do -- // Functions
+					function Content:Set(state)
+						Content.State = math.clamp(math.round(state * Content.Decimals) / Content.Decimals, Content.Min, Content.Max)
+						--
+						Frame_Slider_Title.Text = "<b>" .. Content.State .. Content.Ending .. "</b>"
+						Outline_Frame_Slider.Size = UDim2.new((1 - ((Content.Max - Content.State) / (Content.Max - Content.Min))), 0, 1, 0)
+						--
+						Content.Callback(Content:Get())
+					end
+					--
+					function Content:Refresh()
+						local Mouse = utility:MouseLocation()
+						--
+						Content:Set(math.clamp(math.floor((Content.Min + (Content.Max - Content.Min) * math.clamp(Mouse.X - Outline_Frame_Slider.AbsolutePosition.X, 0, Holder_Outline_Frame.AbsoluteSize.X) / Holder_Outline_Frame.AbsoluteSize.X) * Content.Decimals) / Content.Decimals, Content.Min, Content.Max))
+					end
+					--
+					function Content:Get()
+						return Content.State
+					end
+				end
+				--
+				do -- // Connections
+					utility:CreateConnection(Content_Holder_Button.MouseButton1Down, function(Input)
+						Content:Refresh()
+						--
+						Content.Holding = true
+                        --
+                        Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(215, 215, 215))
+                        Frame_Slider_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(215, 215, 215))
+					end)
+                    --
+					utility:CreateConnection(Content_Holder_Button.MouseEnter, function(Input)
+						Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(215, 215, 215))
+                        Frame_Slider_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(215, 215, 215))
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseLeave, function(Input)
+						Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Content.Holding and Color3.fromRGB(215, 215, 215) or Color3.fromRGB(175, 175, 175))
+                        Frame_Slider_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Content.Holding and Color3.fromRGB(215, 215, 215) or Color3.fromRGB(175, 175, 175))
+					end)
+					--
+					utility:CreateConnection(uis.InputChanged, function(Input)
+						if Content.Holding then
+							Content:Refresh()
+						end
+					end)
+					--
+					utility:CreateConnection(uis.InputEnded, function(Input)
+						if Content.Holding and Input.UserInputType == Enum.UserInputType.MouseButton1 then
+							Content.Holding = false
+                            --
+                            Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(175, 175, 175))
+                        	Frame_Slider_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(175, 175, 175))
+						end
+					end)
+				end
+				--
+				Content:Set(Content.State)
+			end
+			--
+			return Content
+		end
+		--
+		function sections:CreateDropdown(Properties)
+			Properties = Properties or {}
+			--
+			local Content = {
+				Name = (Properties.name or Properties.Name or Properties.title or Properties.Title or "New Dropdown"),
+				State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or 1),
+				Options = (Properties.options or Properties.Options or Properties.list or Properties.List or {1, 2, 3}),
+				Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
+				Content = {
+					Open = false
+				},
+				Window = self.Window,
+				Page = self.Page,
+				Section = self
+			}
+			--
+			do
+				local Content_Holder = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content.Section.Holder,
+					Size = UDim2.new(1, 0, 0, 34 + 5),
+					ZIndex = 3
+				})
+				-- //
+				local Content_Holder_Outline = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 40, 0, 15),
+					Size = UDim2.new(1, -98, 0, 20),
+					ZIndex = 3
+				})
+				--
+				local Content_Holder_Title = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 4),
+					Size = UDim2.new(1, -41, 0, 10),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Title2 = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 4),
+					Size = UDim2.new(1, -41, 0, 10),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextTransparency = 0.5,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Button = utility:RenderObject("TextButton", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Size = UDim2.new(1, 0, 1, 0),
+					Text = ""
+				})
+				-- //
+				local Holder_Outline_Frame = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(36, 36, 36),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder_Outline,
+					Position = UDim2.new(0, 1, 0, 1),
+					Size = UDim2.new(1, -2, 1, -2),
+					ZIndex = 3
+				})
+				-- //
+				local Outline_Frame_Gradient = utility:RenderObject("UIGradient", {
+					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(220, 220, 220)),
+					Enabled = true,
+					Rotation = 270,
+					Parent = Holder_Outline_Frame
+				})
+				--
+				local Outline_Frame_Title = utility:RenderObject("TextLabel", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Holder_Outline_Frame,
+					Position = UDim2.new(0, 8, 0, 0),
+					Size = UDim2.new(1, 0, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = "",
+					TextColor3 = Color3.fromRGB(155, 155, 155),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextXAlignment = "Left"
+				})
+				--
+				local Outline_Frame_Title2 = utility:RenderObject("TextLabel", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Holder_Outline_Frame,
+					Position = UDim2.new(0, 8, 0, 0),
+					Size = UDim2.new(1, 0, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = "",
+					TextColor3 = Color3.fromRGB(155, 155, 155),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextTransparency = 0,
+					TextXAlignment = "Left"
+				})
+				--
+				local Outline_Frame_Arrow = utility:RenderObject("ImageLabel", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Holder_Outline_Frame,
+					Position = UDim2.new(1, -11, 0.5, -4),
+					Size = UDim2.new(0, 7, 0, 6),
+					Image = "rbxassetid://8532000591",
+					ImageColor3 = Color3.fromRGB(255, 255, 255),
+					ZIndex = 3
+				})
+				--
+				do -- // Functions
+					function Content:Set(state)
+						Content.State = state
+						--
+						Outline_Frame_Title.Text = Content.Options[Content:Get()]
+						Outline_Frame_Title2.Text = Content.Options[Content:Get()]
+						--
+						Content.Callback(Content:Get())
+						--
+						if Content.Content.Open then
+							Content.Content:Refresh(Content:Get())
+						end
+					end
+					--
+					function Content:Get()
+						return Content.State
+					end
+					--
+					function Content:Open()
+						Content.Section:CloseContent()
+						--
+						local Open = {}
+						local Connections = {}
+						--
+						local InputCheck
+						--
+						local Content_Open_Holder = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+							BackgroundTransparency = 1,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Content.Section.Extra,
+							Position = UDim2.new(0, Content_Holder_Outline.AbsolutePosition.X - Content.Section.Extra.AbsolutePosition.X, 0, Content_Holder_Outline.AbsolutePosition.Y - Content.Section.Extra.AbsolutePosition.Y + 21),
+							Size = UDim2.new(1, -98, 0, (18 * #Content.Options) + 2),
+							ZIndex = 6
+						})
+						-- //
+						local Open_Holder_Outline = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Content_Open_Holder,
+							Position = UDim2.new(0, 0, 0, 0),
+							Size = UDim2.new(1, 0, 1, 0),
+							ZIndex = 6
+						})
+						-- //
+						local Open_Holder_Outline_Frame = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(35, 35, 35),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Open_Holder_Outline,
+							Position = UDim2.new(0, 1, 0, 1),
+							Size = UDim2.new(1, -2, 1, -2),
+							ZIndex = 6
+						})
+						-- //
+						for Index, Option in pairs(Content.Options) do
+							local Outline_Frame_Option = utility:RenderObject("Frame", {
+								BackgroundColor3 = Color3.fromRGB(35, 35, 35),
+								BackgroundTransparency = 0,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Open_Holder_Outline_Frame,
+								Position = UDim2.new(0, 0, 0, 18 * (Index - 1)),
+								Size = UDim2.new(1, 0, 1 / #Content.Options, 0),
+								ZIndex = 6
+							})
+							-- //
+							local Frame_Option_Title = utility:RenderObject("TextLabel", {
+								BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+								BackgroundTransparency = 1,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Outline_Frame_Option,
+								Position = UDim2.new(0, 8, 0, 0),
+								Size = UDim2.new(1, 0, 1, 0),
+								ZIndex = 6,
+								Font = "Code",
+								RichText = true,
+								Text = tostring(Option),
+								TextColor3 = Index == Content.State and Content.Window.Accent or Color3.fromRGB(205, 205, 205),
+								TextSize = 9,
+								TextStrokeTransparency = 1,
+								TextXAlignment = "Left"
+							})
+							--
+							local Frame_Option_Title2 = utility:RenderObject("TextLabel", {
+								BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+								BackgroundTransparency = 1,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Outline_Frame_Option,
+								Position = UDim2.new(0, 8, 0, 0),
+								Size = UDim2.new(1, 0, 1, 0),
+								ZIndex = 6,
+								Font = "Code",
+								RichText = true,
+								Text = tostring(Option),
+								TextColor3 = Index == Content.State and Content.Window.Accent or Color3.fromRGB(205, 205, 205),
+								TextSize = 9,
+								TextStrokeTransparency = 1,
+								TextTransparency = 0.5,
+								TextXAlignment = "Left"
+							})
+							--
+							local Frame_Option_Button = utility:RenderObject("TextButton", {
+								BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+								BackgroundTransparency = 1,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Outline_Frame_Option,
+								Size = UDim2.new(1, 0, 1, 0),
+								Text = "",
+								ZIndex = 6
+							})
+							--
+							do -- // Connections
+								local Clicked = utility:CreateConnection(Frame_Option_Button.MouseButton1Click, function(Input)
+									Content:Set(Index)
+								end)
+								--
+								local Entered = utility:CreateConnection(Frame_Option_Button.MouseEnter, function(Input)
+									Outline_Frame_Option.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+								end)
+								--
+								local Left = utility:CreateConnection(Frame_Option_Button.MouseLeave, function(Input)
+									Outline_Frame_Option.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+								end)
+								--
+								Connections[#Connections + 1] = Clicked
+								Connections[#Connections + 1] = Entered
+								Connections[#Connections + 1] = Left
+							end
+							--
+							Open[#Open + 1] = {Index, Frame_Option_Title, Frame_Option_Title2, Outline_Frame_Option, Frame_Option_Button}
+						end
+						--
+						do -- // Functions
+							function Content.Content:Close()
+								Content.Content.Open = false
+								--
+								Holder_Outline_Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+								--
+								for Index, Value in pairs(Connections) do
+									Value:Disconnect()
+								end
+								--
+								InputCheck:Disconnect()
+								--
+								for Index, Value in pairs(Open) do
+									Value[2]:Remove()
+									Value[3]:Remove()
+									Value[4]:Remove()
+									Value[5]:Remove()
+								end
+								--
+								Content_Open_Holder:Remove()
+								Open_Holder_Outline:Remove()
+								Open_Holder_Outline_Frame:Remove()
+								--
+								function Content.Content:Refresh() end
+								--
+								InputCheck = nil
+								Connections = nil
+								Open = nil
+							end
+							--
+							function Content.Content:Refresh(state)
+								for Index, Value in pairs(Open) do
+									Value[2].TextColor3 = Value[1] == Content.State and Content.Window.Accent or Color3.fromRGB(205, 205, 205)
+									Value[3].TextColor3 = Value[1] == Content.State and Content.Window.Accent or Color3.fromRGB(205, 205, 205)
+								end
+							end
+						end
+						--
+						Content.Content.Open = true
+						Content.Section.Content = Content.Content
+						--
+						Holder_Outline_Frame.BackgroundColor3 = Color3.fromRGB(46, 46, 46)
+						--
+						do -- // Connections
+							task.wait()
+							--
+							InputCheck = utility:CreateConnection(uis.InputBegan, function(Input)
+								if Content.Content.Open and Input.UserInputType == Enum.UserInputType.MouseButton1 then
+									local Mouse = utility:MouseLocation()
+									--
+									if not (Mouse.X > Content_Open_Holder.AbsolutePosition.X  and Mouse.Y > (Content_Open_Holder.AbsolutePosition.Y + 36) and Mouse.X < (Content_Open_Holder.AbsolutePosition.X + Content_Open_Holder.AbsoluteSize.X) and Mouse.Y < (Content_Open_Holder.AbsolutePosition.Y + Content_Open_Holder.AbsoluteSize.Y + 36)) then
+										Content.Section:CloseContent()
+									end
+								end
+							end)
+						end
+					end
+				end
+				--
+				do -- // Connections
+					utility:CreateConnection(Content_Holder_Button.MouseButton1Down, function(Input)
+						if Content.Content.Open then
+							Content.Section:CloseContent()
+						else
+							Content:Open()
+						end
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseEnter, function(Input)
+						Holder_Outline_Frame.BackgroundColor3 = Color3.fromRGB(46, 46, 46)
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseLeave, function(Input)
+						Holder_Outline_Frame.BackgroundColor3 = Content.Content.Open and Color3.fromRGB(46, 46, 46) or Color3.fromRGB(36, 36, 36)
+					end)
+				end
+				--
+				Content:Set(Content.State)
+			end
+			--
+			return Content
+		end
+		--
+		function sections:CreateMultibox(Properties)
+			Properties = Properties or {}
+			--
+			local Content = {
+				Name = (Properties.name or Properties.Name or Properties.title or Properties.Title or "New Dropdown"),
+				State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or {1}),
+				Options = (Properties.options or Properties.Options or Properties.list or Properties.List or {1, 2, 3}),
+				Minimum = (Properties.min or Properties.Min or Properties.minimum or Properties.Minimum or 0),
+				Maximum = (Properties.max or Properties.Max or Properties.maximum or Properties.Maximum or 1000),
+				Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
+				Content = {
+					Open = false
+				},
+				Window = self.Window,
+				Page = self.Page,
+				Section = self
+			}
+			--
+			do
+				local Content_Holder = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content.Section.Holder,
+					Size = UDim2.new(1, 0, 0, 34 + 5),
+					ZIndex = 3
+				})
+				-- //
+				local Content_Holder_Outline = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 40, 0, 15),
+					Size = UDim2.new(1, -98, 0, 20),
+					ZIndex = 3
+				})
+				--
+				local Content_Holder_Title = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 4),
+					Size = UDim2.new(1, -41, 0, 10),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Title2 = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 4),
+					Size = UDim2.new(1, -41, 0, 10),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextTransparency = 0.5,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Button = utility:RenderObject("TextButton", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Size = UDim2.new(1, 0, 1, 0),
+					Text = ""
+				})
+				-- //
+				local Holder_Outline_Frame = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(36, 36, 36),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder_Outline,
+					Position = UDim2.new(0, 1, 0, 1),
+					Size = UDim2.new(1, -2, 1, -2),
+					ZIndex = 3
+				})
+				-- //
+				local Outline_Frame_Gradient = utility:RenderObject("UIGradient", {
+					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(220, 220, 220)),
+					Enabled = true,
+					Rotation = 270,
+					Parent = Holder_Outline_Frame
+				})
+				--
+				local Outline_Frame_Title = utility:RenderObject("TextLabel", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Holder_Outline_Frame,
+					Position = UDim2.new(0, 8, 0, 0),
+					Size = UDim2.new(1, 0, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = "",
+					TextColor3 = Color3.fromRGB(155, 155, 155),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextXAlignment = "Left"
+				})
+				--
+				local Outline_Frame_Title2 = utility:RenderObject("TextLabel", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Holder_Outline_Frame,
+					Position = UDim2.new(0, 8, 0, 0),
+					Size = UDim2.new(1, 0, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = "",
+					TextColor3 = Color3.fromRGB(155, 155, 155),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextTransparency = 0,
+					TextXAlignment = "Left"
+				})
+				--
+				local Outline_Frame_Arrow = utility:RenderObject("ImageLabel", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Holder_Outline_Frame,
+					Position = UDim2.new(1, -11, 0.5, -4),
+					Size = UDim2.new(0, 7, 0, 6),
+					Image = "rbxassetid://8532000591",
+					ImageColor3 = Color3.fromRGB(255, 255, 255),
+					ZIndex = 3
+				})
+				--
+				do -- // Functions
+					function Content:Set(state)
+						table.sort(state)
+						Content.State = state
+						--
+						local Serialised = utility:Serialise(utility:Sort(Content:Get(), Content.Options))
+						--
+						Serialised = Serialised == "" and "-" or Serialised
+						--
+						Outline_Frame_Title.Text = Serialised
+						Outline_Frame_Title2.Text = Serialised
+						--
+						Content.Callback(Content:Get())
+						--
+						if Content.Content.Open then
+							Content.Content:Refresh(Content:Get())
+						end
+					end
+					--
+					function Content:Get()
+						return Content.State
+					end
+					--
+					function Content:Open()
+						Content.Section:CloseContent()
+						--
+						local Open = {}
+						local Connections = {}
+						--
+						local InputCheck
+						--
+						local Content_Open_Holder = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+							BackgroundTransparency = 1,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Content.Section.Extra,
+							Position = UDim2.new(0, Content_Holder_Outline.AbsolutePosition.X - Content.Section.Extra.AbsolutePosition.X, 0, Content_Holder_Outline.AbsolutePosition.Y - Content.Section.Extra.AbsolutePosition.Y + 21),
+							Size = UDim2.new(1, -98, 0, (18 * #Content.Options) + 2),
+							ZIndex = 6
+						})
+						-- //
+						local Open_Holder_Outline = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Content_Open_Holder,
+							Position = UDim2.new(0, 0, 0, 0),
+							Size = UDim2.new(1, 0, 1, 0),
+							ZIndex = 6
+						})
+						-- //
+						local Open_Holder_Outline_Frame = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(21, 21, 21),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Open_Holder_Outline,
+							Position = UDim2.new(0, 1, 0, 1),
+							Size = UDim2.new(1, -2, 1, -2),
+							ZIndex = 6
+						})
+						-- //
+						for Index, Option in pairs(Content.Options) do
+							local Outline_Frame_Option = utility:RenderObject("Frame", {
+								BackgroundColor3 = Color3.fromRGB(35, 35, 35),
+								BackgroundTransparency = 0,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Open_Holder_Outline_Frame,
+								Position = UDim2.new(0, 0, 0, 18 * (Index - 1)),
+								Size = UDim2.new(1, 0, 1 / #Content.Options, 0),
+								ZIndex = 6
+							})
+							-- //
+							local Frame_Option_Title = utility:RenderObject("TextLabel", {
+								BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+								BackgroundTransparency = 1,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Outline_Frame_Option,
+								Position = UDim2.new(0, 8, 0, 0),
+								Size = UDim2.new(1, 0, 1, 0),
+								ZIndex = 6,
+								Font = "Code",
+								RichText = true,
+								Text = tostring(Option),
+								TextColor3 = table.find(Content.State, Index) and Content.Window.Accent or Color3.fromRGB(205, 205, 205),
+								TextSize = 9,
+								TextStrokeTransparency = 1,
+								TextXAlignment = "Left"
+							})
+							--
+							local Frame_Option_Title2 = utility:RenderObject("TextLabel", {
+								BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+								BackgroundTransparency = 1,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Outline_Frame_Option,
+								Position = UDim2.new(0, 8, 0, 0),
+								Size = UDim2.new(1, 0, 1, 0),
+								ZIndex = 6,
+								Font = "Code",
+								RichText = true,
+								Text = tostring(Option),
+								TextColor3 = table.find(Content.State, Index) and Content.Window.Accent or Color3.fromRGB(205, 205, 205),
+								TextSize = 9,
+								TextStrokeTransparency = 1,
+								TextTransparency = 0.5,
+								TextXAlignment = "Left"
+							})
+							--
+							local Frame_Option_Button = utility:RenderObject("TextButton", {
+								BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+								BackgroundTransparency = 1,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Parent = Outline_Frame_Option,
+								Size = UDim2.new(1, 0, 1, 0),
+								Text = "",
+								ZIndex = 6
+							})
+							--
+							do -- // Connections
+								local Clicked = utility:CreateConnection(Frame_Option_Button.MouseButton1Click, function(Input)
+									local NewTable = Content:Get()
+									--
+									if table.find(NewTable, Index) then
+										if (#NewTable - 1) >= Content.Minimum then
+											table.remove(NewTable, table.find(NewTable, Index))
+										end
+									else
+										if (#NewTable + 1) <= Content.Maximum then
+											table.insert(NewTable, Index)
+										end
+									end
+									--
+									Content:Set(NewTable)
+								end)
+								--
+								local Entered = utility:CreateConnection(Frame_Option_Button.MouseEnter, function(Input)
+									Outline_Frame_Option.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+								end)
+								--
+								local Left = utility:CreateConnection(Frame_Option_Button.MouseLeave, function(Input)
+									Outline_Frame_Option.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+								end)
+								--
+								Connections[#Connections + 1] = Clicked
+								Connections[#Connections + 1] = Entered
+								Connections[#Connections + 1] = Left
+							end
+							--
+							Open[#Open + 1] = {Index, Frame_Option_Title, Frame_Option_Title2, Outline_Frame_Option, Frame_Option_Button}
+						end
+						--
+						do -- // Functions
+							function Content.Content:Close()
+								Content.Content.Open = false
+                                --
+								Holder_Outline_Frame.BackgroundColor3 = Color3.fromRGB(36, 36, 36)
+								--
+								for Index, Value in pairs(Connections) do
+									Value:Disconnect()
+								end
+								--
+								InputCheck:Disconnect()
+								--
+								for Index, Value in pairs(Open) do
+									Value[2]:Remove()
+									Value[3]:Remove()
+									Value[4]:Remove()
+									Value[5]:Remove()
+								end
+								--
+								Content_Open_Holder:Remove()
+								Open_Holder_Outline:Remove()
+								Open_Holder_Outline_Frame:Remove()
+								--
+								function Content.Content:Refresh() end
+								--
+								InputCheck = nil
+								Connections = nil
+								Open = nil
+							end
+							--
+							function Content.Content:Refresh(state)
+								for Index, Value in pairs(Open) do
+									Value[2].TextColor3 = table.find(Content.State, Value[1]) and Content.Window.Accent or Color3.fromRGB(205, 205, 205)
+									Value[3].TextColor3 = table.find(Content.State, Value[1]) and Content.Window.Accent or Color3.fromRGB(205, 205, 205)
+								end
+							end
+						end
+						--
+						Content.Content.Open = true
+						Content.Section.Content = Content.Content
+                        --
+						Holder_Outline_Frame.BackgroundColor3 = Color3.fromRGB(46, 46, 46)
+						--
+						do -- // Connections
+							task.wait()
+							--
+							InputCheck = utility:CreateConnection(uis.InputBegan, function(Input)
+								if Content.Content.Open and Input.UserInputType == Enum.UserInputType.MouseButton1 then
+									local Mouse = utility:MouseLocation()
+									--
+									if not (Mouse.X > Content_Open_Holder.AbsolutePosition.X and Mouse.Y > (Content_Open_Holder.AbsolutePosition.Y + 36) and Mouse.X < (Content_Open_Holder.AbsolutePosition.X + Content_Open_Holder.AbsoluteSize.X) and Mouse.Y < (Content_Open_Holder.AbsolutePosition.Y + Content_Open_Holder.AbsoluteSize.Y + 36)) then
+										Content.Section:CloseContent()
+									end
+								end
+							end)
+						end
+					end
+				end
+				--
+				do -- // Connections
+					utility:CreateConnection(Content_Holder_Button.MouseButton1Down, function(Input)
+						if Content.Content.Open then
+							Content.Section:CloseContent()
+						else
+							Content:Open()
+						end
+					end)
+                    --
+					utility:CreateConnection(Content_Holder_Button.MouseEnter, function(Input)
+						Holder_Outline_Frame.BackgroundColor3 = Color3.fromRGB(46, 46, 46)
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseLeave, function(Input)
+						Holder_Outline_Frame.BackgroundColor3 = Content.Content.Open and Color3.fromRGB(46, 46, 46) or Color3.fromRGB(36, 36, 36)
+					end)
+				end
+				--
+				Content:Set(Content.State)
+			end
+			--
+			return Content
+		end
+		--
+		function sections:CreateKeybind(Properties)
+			Properties = Properties or {}
+			--
+			local Content = {
+				Name = (Properties.name or Properties.Name or Properties.title or Properties.Title or "New Toggle"),
+				State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or nil),
+                Mode = (Properties.mode or Properties.Mode or "Hold"),
+				Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
+                Active = false,
+                Holding = false,
+				Window = self.Window,
+				Page = self.Page,
+				Section = self
+			}
+            --
+            local Keys = {
+                KeyCodes = {"Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "A", "S", "D", "F", "G", "H", "J", "K", "L", "Z", "X", "C", "V", "B", "N", "M", "One", "Two", "Three", "Four", "Five", "Six", "Seveen", "Eight", "Nine", "0", "Insert", "Tab", "Home", "End", "LeftAlt", "LeftControl", "LeftShift", "RightAlt", "RightControl", "RightShift", "CapsLock"},
+                Inputs = {"MouseButton1", "MouseButton2", "MouseButton3"},
+                Shortened = {["MouseButton1"] = "M1", ["MouseButton2"] = "M2", ["MouseButton3"] = "M3", ["Insert"] = "INS", ["LeftAlt"] = "LA", ["LeftControl"] = "LC", ["LeftShift"] = "LS", ["RightAlt"] = "RA", ["RightControl"] = "RC", ["RightShift"] = "RS", ["CapsLock"] = "CL"}
+            }
+			--
+			do
+				local Content_Holder = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content.Section.Holder,
+					Size = UDim2.new(1, 0, 0, 8 + 10),
+					ZIndex = 3
+				})
+				-- //
+				local Content_Holder_Title = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 0),
+					Size = UDim2.new(1, -41, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Title2 = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 0),
+					Size = UDim2.new(1, -41, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextTransparency = 0.5,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Button = utility:RenderObject("TextButton", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Size = UDim2.new(1, 0, 1, 0),
+					Text = ""
+				})
+                -- //
+                local Content_Holder_Value = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 0),
+					Size = UDim2.new(1, -61, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text =  "",
+					TextColor3 = Color3.fromRGB(114, 114, 114),
+                    TextStrokeColor3 = Color3.fromRGB(15, 15, 15),
+					TextSize = 9,
+					TextStrokeTransparency = 0,
+					TextXAlignment = "Right"
+				})
+				--
+				do -- // Functions
+					function Content:Set(state)
+						Content.State = state or {}
+                        Content.Active = false
+                        --
+                        Content_Holder_Value.Text = "[" .. (#Content:Get() > 0 and Content:Shorten(Content:Get()[2]) or "-") .. "]"
+						--
+						Content.Callback(Content:Get())
+					end
+					--
+					function Content:Get()
+						return Content.State
+					end
+                    --
+                    function Content:Shorten(Str)
+                        for Index, Value in pairs(Keys.Shortened) do
+                            Str = string.gsub(Str, Index, Value)
+                        end
+                        --
+                        return Str
+                    end
+                    --
+                    function Content:Change(Key)
+                        if Key.EnumType then
+                            if Key.EnumType == Enum.KeyCode or Key.EnumType == Enum.UserInputType then
+                                if table.find(Keys.KeyCodes, Key.Name) or table.find(Keys.Inputs, Key.Name) then
+                                    Content:Set({Key.EnumType == Enum.KeyCode and "KeyCode" or "UserInputType", Key.Name})
+                                    return true
+                                end
+                            end
+                        end
+                    end
+				end
+				--
+				do -- // Connections
+					utility:CreateConnection(Content_Holder_Button.MouseButton1Click, function(Input)
+						Content.Holding = true
+                        --
+                        Content_Holder_Value.TextColor3 = Color3.fromRGB(255, 0, 0)
+					end)
+                    --
+                    utility:CreateConnection(Content_Holder_Button.MouseButton2Click, function(Input)
+						Content:Set()
+					end)
+                    --
+					utility:CreateConnection(Content_Holder_Button.MouseEnter, function(Input)
+						Content_Holder_Value.TextColor3 = Color3.fromRGB(164, 164, 164)
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseLeave, function(Input)
+						Content_Holder_Value.TextColor3 = Content.Holding and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(114, 114, 114)
+					end)
+                    --
+                    utility:CreateConnection(uis.InputBegan, function(Input)
+                        if Content.Holding then
+                            local Success = Content:Change(Input.KeyCode.Name ~= "Unknown" and Input.KeyCode or Input.UserInputType)
+                            --
+                            if Success then
+                                Content.Holding = false
+                                --
+                                Content_Holder_Value.TextColor3 = Color3.fromRGB(114, 114, 114)
+                            end
+                        end
+                        --
+                        if Content:Get()[1] and Content:Get()[2] then
+                            if Input.KeyCode == Enum[Content:Get()[1]][Content:Get()[2]] or Input.UserInputType == Enum[Content:Get()[1]][Content:Get()[2]] then
+                                if Content.Mode == "Hold" then
+                                    Content.Active = true
+                                elseif Content.Mode == "Toggle" then
+                                    Content.Active = not Content.Active
+                                end
+                            end
+                        end
+                    end)
+                    --
+                    utility:CreateConnection(uis.InputEnded, function(Input)
+                        if Content:Get()[1] and Content:Get()[2] then
+                            if Input.KeyCode == Enum[Content:Get()[1]][Content:Get()[2]] or Input.UserInputType == Enum[Content:Get()[1]][Content:Get()[2]] then
+                                if Content.Mode == "Hold" then
+                                    Content.Active = false
+                                end
+                            end
+                        end
+                    end)
+				end
+				--
+				Content:Set(Content.State)
+			end
+			--
+			return Content
+		end
+		--
+		function sections:CreateColorpicker(Properties)
+			Properties = Properties or {}
+			--
+			local Content = {
+				Name = (Properties.name or Properties.Name or Properties.title or Properties.Title or "New Toggle"),
+				State = (Properties.state or Properties.State or Properties.def or Properties.Def or Properties.default or Properties.Default or Color3.fromRGB(255, 255, 255)),
+				Callback = (Properties.callback or Properties.Callback or Properties.callBack or Properties.CallBack or function() end),
+				Content = {
+					Open = false
+				},
+				Window = self.Window,
+				Page = self.Page,
+				Section = self
+			}
+			--
+			do
+				local Content_Holder = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content.Section.Holder,
+					Size = UDim2.new(1, 0, 0, 8 + 10),
+					ZIndex = 3
+				})
+				-- //
+				local Content_Holder_Outline = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(1, -38, 0, 4),
+					Size = UDim2.new(0, 17, 0, 9),
+					ZIndex = 3
+				})
+				--
+				local Content_Holder_Title = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 0),
+					Size = UDim2.new(1, -41, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Title2 = utility:RenderObject("TextLabel", {
+					AnchorPoint = Vector2.new(0, 0),
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Position = UDim2.new(0, 41, 0, 0),
+					Size = UDim2.new(1, -41, 1, 0),
+					ZIndex = 3,
+					Font = "Code",
+					RichText = true,
+					Text = Content.Name,
+					TextColor3 = Color3.fromRGB(205, 205, 205),
+					TextSize = 9,
+					TextStrokeTransparency = 1,
+					TextTransparency = 0.5,
+					TextXAlignment = "Left"
+				})
+				--
+				local Content_Holder_Button = utility:RenderObject("TextButton", {
+					BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder,
+					Size = UDim2.new(1, 0, 1, 0),
+					Text = ""
+				})
+				-- //
+				local Holder_Outline_Frame = utility:RenderObject("Frame", {
+					BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+					BackgroundTransparency = 0,
+					BorderColor3 = Color3.fromRGB(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = Content_Holder_Outline,
+					Position = UDim2.new(0, 1, 0, 1),
+					Size = UDim2.new(1, -2, 1, -2),
+					ZIndex = 3
+				})
+				-- //
+				local Outline_Frame_Gradient = utility:RenderObject("UIGradient", {
+					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(140, 140, 140)),
+					Enabled = true,
+					Rotation = 90,
+					Parent = Holder_Outline_Frame
+				})
+				--
+				do -- // Functions
+					function Content:Set(state)
+						Content.State = state
+						--
+						Holder_Outline_Frame.BackgroundColor3 = Content.State
+						--
+						Content.Callback(Content:Get())
+					end
+					--
+					function Content:Get()
+						return Content.State
+					end
+					--
+					function Content:Open()
+						Content.Section:CloseContent()
+						--
+						local Connections = {}
+						--
+						local InputCheck
+						--
+						local Content_Open_Holder = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+							BackgroundTransparency = 1,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Content.Section.Extra,
+							Position = UDim2.new(0, Content_Holder_Outline.AbsolutePosition.X - Content.Section.Extra.AbsolutePosition.X, 0, Content_Holder_Outline.AbsolutePosition.Y - Content.Section.Extra.AbsolutePosition.Y + 10),
+							Size = UDim2.new(0, 180, 0, 175),
+							ZIndex = 6
+						})
+						-- //
+						local Open_Holder_Button = utility:RenderObject("TextButton", {
+							BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+							BackgroundTransparency = 1,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Content_Open_Holder,
+							Position = UDim2.new(0, -1, 0, -1),
+							Size = UDim2.new(1, 2, 1, 2),
+							Text = ""
+						})
+						-- //
+						local Open_Holder_Outline = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(12, 12, 12),
+							BorderMode = "Inset",
+							BorderSizePixel = 1,
+							Parent = Content_Open_Holder,
+							Position = UDim2.new(0, 0, 0, 0),
+							Size = UDim2.new(1, 0, 1, 0),
+							ZIndex = 6
+						})
+						-- //
+						local Open_Outline_Frame = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Open_Holder_Outline,
+							Position = UDim2.new(0, 1, 0, 1),
+							Size = UDim2.new(1, -2, 1, -2),
+							ZIndex = 6
+						})
+						-- //
+						local ValSat_Picker_Outline = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Open_Outline_Frame,
+							Position = UDim2.new(0, 2, 0, 2),
+							Size = UDim2.new(0, 152, 0, 152),
+							ZIndex = 6
+						})
+						--
+						local Hue_Picker_Outline = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Open_Outline_Frame,
+							Position = UDim2.new(1, -19, 0, 2),
+							Size = UDim2.new(0, 17, 0, 152),
+							ZIndex = 6
+						})
+						--
+						local Transparency_Picker_Outline = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(12, 12, 12),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = Open_Outline_Frame,
+							Position = UDim2.new(0, 2, 1, -14),
+							Size = UDim2.new(0, 152, 0, 12),
+							ZIndex = 6
+						})
+						-- //
+						local ValSat_Picker_Color = utility:RenderObject("Frame", {
+							BackgroundColor3 = Color3.fromRGB(255, 12, 12),
+							BackgroundTransparency = 0,
+							BorderColor3 = Color3.fromRGB(0, 0, 0),
+							BorderSizePixel = 0,
+							Parent = ValSat_Picker_Outline,
+							Position = UDim2.new(0, 1, 0, 1),
+							Size = UDim2.new(1, -2, 1, -2),
+							ZIndex = 6
+						})
+						--
+						do -- // Functions
+							function Content.Content:Close()
+								Content.Content.Open = false
+								--
+								for Index, Value in pairs(Connections) do
+									Value:Disconnect()
+								end
+								--
+								InputCheck:Disconnect()
+								--
+								Content_Open_Holder:Remove()
+								--
+								function Content.Content:Refresh() end
+								--
+								InputCheck = nil
+								Connections = nil
+							end
+							--
+							function Content.Content:Refresh(state)
+							end
+						end
+						--
+						Content.Content.Open = true
+						Content.Section.Content = Content.Content
+						--
+						do -- // Connections
+							InputCheck = utility:CreateConnection(uis.InputBegan, function(Input)
+								if Content.Content.Open and Input.UserInputType == Enum.UserInputType.MouseButton1 then
+									local Mouse = utility:MouseLocation()
+									--
+									if not (Mouse.X > Content_Open_Holder.AbsolutePosition.X and Mouse.Y > (Content_Open_Holder.AbsolutePosition.Y + 36) and Mouse.X < (Content_Open_Holder.AbsolutePosition.X + Content_Open_Holder.AbsoluteSize.X) and Mouse.Y < (Content_Open_Holder.AbsolutePosition.Y + Content_Open_Holder.AbsoluteSize.Y + 36)) then
+										if not (Mouse.X > Content_Holder.AbsolutePosition.X and Mouse.Y > (Content_Holder.AbsolutePosition.Y) and Mouse.X < (Content_Holder.AbsolutePosition.X + Content_Holder.AbsoluteSize.X) and Mouse.Y < (Content_Holder.AbsolutePosition.Y + Content_Holder.AbsoluteSize.Y)) then
+											if Content.Content.Open then
+												Content.Section:CloseContent()
+											end
+										end
+									end
+								end
+							end)
+						end
+					end
+				end
+				--
+				do -- // Connections
+					utility:CreateConnection(Content_Holder_Button.MouseButton1Click, function(Input)
+						if Content.Content.Open then
+							Content.Section:CloseContent()
+						else
+							Content:Open()
+						end
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseEnter, function(Input)
+						Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 180, 180))
+					end)
+					--
+					utility:CreateConnection(Content_Holder_Button.MouseLeave, function(Input)
+						Outline_Frame_Gradient.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(140, 140, 140))
+					end)
+				end
+				--
+				Content:Set(Content.State)
+			end
+			--
+			return Content
+		end
+	end
 
-local function Check()
-    if not SilentAim.Enabled then
-        return false
-    end
-    if not SilentAim.Selected or SilentAim.Selected == LocalPlayer then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return false
-    end
-    if not SilentAim.Selected:IsA("Player") then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return false
-    end
-    if not SilentAim.Selected.Parent or not SilentAim.Selected:IsDescendantOf(Players) then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return false
-    end
-    local char = SilentAim.Selected.Character
-    if not char or not char.Parent or not char:IsDescendantOf(Workspace) or not char:FindFirstChild("Humanoid") then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return false
-    end
-    if not SilentAim.KeepTargetOnDeath and char.Humanoid.Health <= 0 then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return false
-    end
-    local bodyEffects = char:FindFirstChild("BodyEffects")
-    if not bodyEffects or not bodyEffects:FindFirstChild("K.O") then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return false
-    end
-    local koValue = bodyEffects["K.O"].Value
-    local grabbed = char:FindFirstChild("GRABBING_CONSTRAINT") ~= nil
-    if (SilentAim.IgnoreRagdoll and koValue and not SilentAim.AutostompEnabled and not autostompState.forceStompActive) or (SilentAim.IgnoreGrabbed and grabbed) then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return false
-    end
-    if not SilentAim.SelectedPart or not SilentAim.SelectedPart.Parent or not SilentAim.SelectedPart:IsDescendantOf(char) then
-        SilentAim.SelectedPart = ClosestPart(char)
-        if not SilentAim.SelectedPart then
-            SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-            ReacquireTarget()
-            return false
-        end
-    end
-    return true
-end
-
-local function GetClosest()
-    local closest, shortest, targetPart = nil, math.huge, nil
-    if not Camera then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        return
-    end
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if not plr:IsA("Player") then
-            continue
-        end
-        if plr == LocalPlayer or not IsWhitelisted(plr) or not plr.Parent or not plr:IsDescendantOf(Players) then continue end
-        local char = plr.Character
-        if char and char.Parent and char:IsDescendantOf(Workspace) and char:FindFirstChild("Humanoid") then
-            local part = ClosestPart(char)
-            if part then
-                local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                if not onScreen then continue end
-                local dist = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
-                if dist < shortest and (not SilentAim.VisibleCheck or IsPartVisible(part, char)) then
-                    closest = plr
-                    targetPart = part
-                    shortest = dist
-                end
-            end
-        end
-    end
-    SilentAim.Selected = closest
-    SilentAim.SelectedPart = targetPart
-    if closest then
-        SilentAim.PreviousTarget = closest
-    else
-        SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
-    end
-end
-
-local function UpdateTracer()
-    if not Beam then
-        InitBeam()
-    end
-    if Beam then
-        Beam.Enabled = SilentAim.TracerEnabled and Check()
-    end
-    if not SilentAim.TracerEnabled or not Check() then return end
-    local lChar = LocalPlayer.Character
-    if not lChar or not lChar:FindFirstChild("Head") then return end
-    local tChar = SilentAim.Selected and SilentAim.Selected.Character
-    if not tChar or not tChar.Parent or not tChar:IsDescendantOf(Workspace) then
-        SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-        ReacquireTarget()
-        return
-    end
-    local tPart = SilentAim.SelectedPart
-    if not tPart or not tPart.Parent or not tPart:IsDescendantOf(tChar) then
-        SilentAim.SelectedPart = ClosestPart(tChar)
-        if not SilentAim.SelectedPart then
-            SilentAim.Selected, SilentAim.SelectedPart = nil, nil
-            ReacquireTarget()
-            return
-        end
-        tPart = SilentAim.SelectedPart
-    end
-    local predictedPos = getPredictedPosition(SilentAim.Selected) or tPart.Position
-    StartAttachment.Parent = lChar.Head
-    EndAttachment.Parent = tPart
-    StartAttachment.WorldPosition = lChar.Head.Position
-    EndAttachment.WorldPosition = predictedPos
-end
-
-local function UpdateTargetSelection()
-    if SilentAim.TargetSelectionMode == "Auto" then
-        GetClosest()
-        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
-            SilentAim.PreviousTarget = SilentAim.Selected
-        end
-    end
-end
-
-local function UpdateAimbot()
-    UpdateTracer()
-    UpdateTargetSelection()
-
-    if not SilentAim.Enabled then
-        if autostompState.followPart then cleanupAutostomp() end
-        return
-    end
-
-    if autostompState.forceStompActive and autostompState.followPart then
-        local targetPlayer = SilentAim.Selected
-        if not targetPlayer or not targetPlayer.Character then
-            cleanupAutostomp()
-            return
-        end
-
-        local char = targetPlayer.Character
-        local bodyEffects = char:FindFirstChild("BodyEffects")
-        local ko = bodyEffects and bodyEffects:FindFirstChild("K.O")
-        local humanoid = char:FindFirstChild("Humanoid")
-
-        if not bodyEffects or not ko or not ko.Parent or not humanoid or not humanoid.Parent then
-            cleanupAutostomp()
-            return
-        end
-
-        if not ko.Value or humanoid.Health <= 0 then
-            cleanupAutostomp()
-            return
-        end
-
-        local ragdollPart = GetRagdollPart(char)
-        if not ragdollPart then
-            cleanupAutostomp()
-            return
-        end
-
-        if not Char or not Char.Parent or not Char:IsDescendantOf(Workspace) or not HRP or not HRP.Parent or not Humanoid then
-            cleanupAutostomp()
-            return
-        end
-
-        local currentTargetPosition = ragdollPart.Position
-        local originalCFrame = HRP.CFrame
-        local newCFrame = CFrame.new(currentTargetPosition + Vector3.new(0, SilentAim.AutostompYOffset, 0))
-
-        autostompState.followPart.CFrame = originalCFrame + Vector3.new(0, 1.5, 0)
-        Camera.CameraSubject = autostompState.followPart
-
-        HRP.CFrame = newCFrame
-        RunService.RenderStepped:Wait()
-        HRP.CFrame = originalCFrame
-
-        if not autostompState.boxESP then
-            autostompState.boxESP = CreateBoxESP()
-        end
-        UpdateBoxESP(autostompState.boxESP, newCFrame.Position)
-
-        if autostompState.lastStompTime and (tick() - autostompState.lastStompTime) >= SilentAim.AutostompInterval then
-            performStomp()
-        end
-        return
-    end
-
-    if not SilentAim.AutostompEnabled or not Check() then
-        if autostompState.followPart then cleanupAutostomp() end
-        return
-    end
-
-    local targetPlayer = SilentAim.Selected
-    local char = targetPlayer.Character
-    local bodyEffects = char:FindFirstChild("BodyEffects")
-    local ko = bodyEffects and bodyEffects:FindFirstChild("K.O")
-    local humanoid = char:FindFirstChild("Humanoid")
-
-    if not bodyEffects or not ko or not ko.Parent or not humanoid or not humanoid.Parent then
-        if autostompState.followPart then cleanupAutostomp() end
-        return
-    end
-
-    if not ko.Value or humanoid.Health <= 0 then
-        if autostompState.followPart then cleanupAutostomp() end
-        autostompState.autostompAppliedToTarget[targetPlayer] = nil
-        return
-    end
-
-    local ragdollPart = GetRagdollPart(char)
-    if not ragdollPart then
-        if autostompState.followPart then cleanupAutostomp() end
-        return
-    end
-
-    if not Char or not Char.Parent or not Char:IsDescendantOf(Workspace) or not HRP or not HRP.Parent or not Humanoid then
-        if autostompState.followPart then cleanupAutostomp() end
-        return
-    end
-
-    if autostompState.autostompAppliedToTarget[targetPlayer] then
-        if autostompState.followPart then
-            local currentTargetPosition = ragdollPart.Position
-            local originalCFrame = HRP.CFrame
-            local newCFrame = CFrame.new(currentTargetPosition + Vector3.new(0, SilentAim.AutostompYOffset, 0))
-
-            autostompState.followPart.CFrame = originalCFrame + Vector3.new(0, 1.5, 0)
-            Camera.CameraSubject = autostompState.followPart
-
-            HRP.CFrame = newCFrame
-            RunService.RenderStepped:Wait()
-            HRP.CFrame = originalCFrame
-
-            if not autostompState.boxESP then
-                autostompState.boxESP = CreateBoxESP()
-            end
-            UpdateBoxESP(autostompState.boxESP, newCFrame.Position)
-
-            if autostompState.lastStompTime and (tick() - autostompState.lastStompTime) >= SilentAim.AutostompInterval and autostompState.stompCounter > 0 then
-                performStomp()
-            end
-        end
-        return
-    end
-
-    autostompState.autostompAppliedToTarget[targetPlayer] = true
-    if not autostompState.followPart then
-        autostompState.followPart = createFollowPart()
-        autostompState.stompCounter = SilentAim.AutostompCount
-        autostompState.lastStompTime = tick()
-        autostompState.stopAutostomp = false
-    end
-
-    if autostompState.followPart then
-        local currentTargetPosition = ragdollPart.Position
-        local originalCFrame = HRP.CFrame
-        local newCFrame = CFrame.new(currentTargetPosition + Vector3.new(0, SilentAim.AutostompYOffset, 0))
-
-        autostompState.followPart.CFrame = originalCFrame + Vector3.new(0, 1.5, 0)
-        Camera.CameraSubject = autostompState.followPart
-
-        HRP.CFrame = newCFrame
-        RunService.RenderStepped:Wait()
-        HRP.CFrame = originalCFrame
-
-        if not autostompState.boxESP then
-            autostompState.boxESP = CreateBoxESP()
-        end
-        UpdateBoxESP(autostompState.boxESP, newCFrame.Position)
-
-        if autostompState.lastStompTime and (tick() - autostompState.lastStompTime) >= SilentAim.AutostompInterval and autostompState.stompCounter > 0 then
-            performStomp()
-        end
-    end
-end
-
--- Rapid Fire Functions
-local function safeActivate(tool)
-    if not debounce and tool and tool:IsA("Tool") then
-        debounce = true
-        pcall(function()
-            tool:Activate()
-        end)
-        task.wait(minFireDelay)
-        debounce = false
-    end
-end
-
-local function fireLoop()
-    while firing and rapidFireEnabled do
-        local character = LocalPlayer.Character
-        if character then
-            local tool = character:FindFirstChildOfClass("Tool")
-            if rapidFireMode == "Rage" then
-                safeActivate(tool)
-            elseif rapidFireMode == "Legit" then
-                safeActivate(tool)
-                task.wait(minFireDelay * 2)
-            end
-        end
-        RunService.Heartbeat:Wait()
-    end
-end
-
--- Input Handling
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == SilentAim.Keybind and SilentAim.TargetSelectionMode == "Keybind" and SilentAim.Enabled then
-        if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
-            SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
-            Library:Notify({
-                Title = "Aimbot",
-                Description = "Target deselected",
-                Time = 3
-            })
-        else
-            GetClosest()
-            if SilentAim.Selected and SilentAim.Selected ~= LocalPlayer then
-                SilentAim.PreviousTarget = SilentAim.Selected
-                Library:Notify({
-                    Title = "Aimbot",
-                    Description = "Target selected: " .. SilentAim.Selected.Name,
-                    Time = 3
-                })
-            end
-        end
-    elseif input.KeyCode == SilentAim.ResolverKeybind and SilentAim.ResolverEnabled then
-        SilentAim.ResolverMode = SilentAim.ResolverMode == "Velocity" and "MoveDirection" or SilentAim.ResolverMode == "MoveDirection" and "CalculateCFrame" or "Velocity"
-        Library:Notify({
-            Title = "Resolver Mode",
-            Description = "Set to " .. SilentAim.ResolverMode,
-            Time = 3
-        })
-    elseif input.KeyCode == SilentAim.ForceStompKeybind then
-        PerformForceStomp()
-    elseif input.KeyCode == SilentAim.ForcePredictionKeybind and SilentAim.ForcePredictionEnabled then
-        if SilentAim.CurrentPredictionConfigIndex == 0 then
-            SilentAim.CurrentPredictionConfigIndex = 1
-        else
-            SilentAim.CurrentPredictionConfigIndex = SilentAim.CurrentPredictionConfigIndex + 1
-            if SilentAim.CurrentPredictionConfigIndex > #SilentAim.PredictionConfigs then
-                SilentAim.CurrentPredictionConfigIndex = 1
-            end
-        end
-        local config = SilentAim.PredictionConfigs[SilentAim.CurrentPredictionConfigIndex]
-        Library:Notify({
-            Title = "Force Prediction",
-            Description = "Switched to config: XZ=" .. config.PredictionXZ .. ", Y=" .. config.PredictionY,
-            Time = 3
-        })
-    elseif input.UserInputType == Enum.UserInputType.MouseButton1 and rapidFireEnabled then
-        firing = true
-        fireLoop()
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        firing = false
-    end
-end)
-
--- Update Keybinds using OnChanged
-TargetKeybind.OnChanged(function()
-    local key = TargetKeybind:GetValue().key
-    SilentAim.Keybind = Enum.KeyCode[key] or Enum.KeyCode.Q
-    Library:Notify({
-        Title = "Target Keybind",
-        Description = "Set to " .. (key or "None"),
-        Time = 3
-    })
-end)
-
-ResolverKeybind.OnChanged(function()
-    local key = ResolverKeybind:GetValue().key
-    SilentAim.ResolverKeybind = Enum.KeyCode[key] or Enum.KeyCode.J
-    Library:Notify({
-        Title = "Resolver Keybind",
-        Description = "Set to " .. (key or "None"),
-        Time = 3
-    })
-end)
-
-ForceStompKeybind.OnChanged(function()
-    local key = ForceStompKeybind:GetValue().key
-    SilentAim.ForceStompKeybind = Enum.KeyCode[key] or Enum.KeyCode.V
-    Library:Notify({
-        Title = "Force Stomp Keybind",
-        Description = "Set to " .. (key or "None"),
-        Time = 3
-    })
-end)
-
-ForcePredictionKeybind.OnChanged(function()
-    local key = ForcePredictionKeybind:GetValue().key
-    SilentAim.ForcePredictionKeybind = Enum.KeyCode[key] or Enum.KeyCode.P
-    Library:Notify({
-        Title = "Force Prediction Keybind",
-        Description = "Set to " .. (key or "None"),
-        Time = 3
-    })
-end)
-
--- Player Events
-Players.PlayerAdded:Connect(function(player)
-    if SilentAim.KeepTargetOnDeath and SilentAim.PreviousTarget == player and SilentAim.ReacquisitionMode == "Immediate" then
-        if player.Parent and player:IsDescendantOf(Players) then
-            player.CharacterAdded:Connect(function(char)
-                if not player or not player.Parent or not player:IsDescendantOf(Players) then return end
-                SilentAim.Selected = player
-                SilentAim.SelectedPart = ClosestPart(char)
-            end)
-        end
-    end
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-    if SilentAim.Selected == player or SilentAim.PreviousTarget == player then
-        SilentAim.Selected, SilentAim.SelectedPart, SilentAim.PreviousTarget = nil, nil, nil
-        autostompState.autostompAppliedToTarget[player] = nil
-        ReacquireTarget()
-    end
-end)
-
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        player.CharacterAdded:Connect(function(char)
-            if autostompState.autostompAppliedToTarget[player] then
-                autostompState.autostompAppliedToTarget[player] = nil
-            end
-            if SilentAim.Selected == player then
-                SilentAim.SelectedPart = ClosestPart(char)
-            end
-        end)
-    end
-end
-
-Players.PlayerAdded:Connect(function(player)
-    if player ~= LocalPlayer then
-        player.CharacterAdded:Connect(function(char)
-            if autostompState.autostompAppliedToTarget[player] then
-                autostompState.autostompAppliedToTarget[player] = nil
-            end
-            if SilentAim.Selected == player then
-                SilentAim.SelectedPart = ClosestPart(char)
-            end
-        end)
-    end
-end)
-
-LocalPlayer.CharacterAdded:Connect(function(newCharacter)
-    Char = newCharacter
-    HRP = Char:WaitForChild("HumanoidRootPart", 5) or error("HumanoidRootPart not found")
-    Humanoid = Char:WaitForChild("Humanoid", 5) or error("Humanoid not found")
-    setupCharacter(newCharacter)
-    if autostompState.followPart then
-        autostompState.followPart = createFollowPart()
-        autostompState.stompCounter = SilentAim.AutostompCount
-        autostompState.lastStompTime = tick()
-        autostompState.stopAutostomp = false
-    end
-end)
-
--- Setup Character for Rapid Fire
-local function setupCharacter(character)
-    character.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") then
-            child.Activated:Connect(function()
-                if firing and rapidFireEnabled then
-                    safeActivate(child)
-                end
-            end)
-        end
-    end)
-end
-
-if LocalPlayer.Character then
-    setupCharacter(LocalPlayer.Character)
-end
-
--- Mouse Hook with explicit if-else
-local __index
-__index = hookmetamethod(game, "__index", function(t, k)
-    if not SilentAim.Enabled then
-        return __index(t, k)
-    end
-    if t:IsA("Mouse") and (k == "Hit" or k == "Target") then
-        if not Check() then
-            return __index(t, k)
-        end
-        local selPart = SilentAim.SelectedPart
-        if selPart then
-            local predictedPos = getPredictedPosition(SilentAim.Selected)
-            if predictedPos then
-                if k == "Hit" then
-                    return CFrame.new(predictedPos)
-                else
-                    return selPart
-                end
-            else
-                return __index(t, k)
-            end
-        end
-    end
-    return __index(t, k)
-end)
-
--- Main Loop
-RunService.Heartbeat:Connect(function()
-    UpdateAimbot()
-end)
-
--- Cleanup
-game:BindToClose(function()
-    if Beam then Beam:Destroy() end
-    if StartAttachment then StartAttachment:Destroy() end
-    if EndAttachment then EndAttachment:Destroy() end
-    cleanupAutostomp()
-    for player, _ in pairs(autostompState.autostompAppliedToTarget) do
-        autostompState.autostompAppliedToTarget[player] = nil
-    end
-    if autostompState.boxESP then
-        DestroyBoxESP(autostompState.boxESP)
-        autostompState.boxESP = nil
-    end
-    Library:Unload()
-end)
-
--- Register UI elements with SaveManager and load autoload config
-if SaveManager then
-    SaveManager:LoadAutoloadConfig()
-end
-
--- Notify user that the UI is loaded
-Library:Notify({
-    Title = "metaBreaker.lua",
-    Description = "UI and Aimbot Loaded Successfully!",
-    Time = 3
-})
-
--- Show the UI
-Library:Toggle(true)
+return library
