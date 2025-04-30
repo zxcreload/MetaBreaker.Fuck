@@ -459,7 +459,7 @@ function library:CreatePage(Properties)
 			Size = UDim2.new(0.5, -10, 1, 0)
 		})
 		-- //
-		local Page_Left_List = utility:RenderObject
+		local Page_Left_List = utility:RenderObject("UIListLayout", {
 			Padding = UDim.new(0, 18),
 			Parent = Page_Page_Left,
 			FillDirection = "Vertical",
@@ -1315,8 +1315,7 @@ do -- // Content
 				function Content:Set(state)
 					Content.State = state
 					--
-					Outline_Frame_Title.Text = Content.Options[Content:Get()]
-					Outline_Frame_Title2.Text = Content.Options[Content:Get()]
+					Outline_Frame_Title.Text = Content.State
 					--
 					Content.Callback(Content:Get())
 					--
@@ -1499,7 +1498,7 @@ do -- // Content
 						--
 						InputCheck = utility:CreateConnection(uis.InputBegan, function(Input)
 							if Content.Content.Open and Input.UserInputType == Enum.UserInputType.MouseButton1 then
-local Mouse = utility:MouseLocation()
+								local Mouse = utility:MouseLocation()
 								--
 								if not (Mouse.X > Content_Open_Holder.AbsolutePosition.X and Mouse.Y > (Content_Open_Holder.AbsolutePosition.Y + 36) and Mouse.X < (Content_Open_Holder.AbsolutePosition.X + Content_Open_Holder.AbsoluteSize.X) and Mouse.Y < (Content_Open_Holder.AbsolutePosition.Y + Content_Open_Holder.AbsoluteSize.Y + 36)) then
 									Content.Section:CloseContent()
@@ -2352,6 +2351,8 @@ local Mouse = utility:MouseLocation()
 					--
 					Content.Content.Open = true
 					Content.Section.Content = Content.Content
+					--
+					Holder_Outline_Frame.BackgroundColor3 = Color3.fromRGB(46, 46, 46)
 					--
 					do -- // Connections
 						task.wait()
