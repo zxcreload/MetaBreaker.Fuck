@@ -281,16 +281,15 @@
 			end
 			--
 			do -- // Connections
-				-- Drag and drop functionality
 				-- Создаем область для перетаскивания в верхней части окна
 				local DragArea = utility:RenderObject("Frame", {
 					BackgroundColor3 = Color3.fromRGB(20, 20, 20),
-					BackgroundTransparency = 0, -- Видимый, чтобы пользователь понимал, где можно перетаскивать
+					BackgroundTransparency = 0,
 					BorderSizePixel = 0,
 					Parent = ScreenGui_MainFrame,
 					Position = UDim2.new(0, 3, 0, 3),
-					Size = UDim2.new(1, -6, 0, 25), -- Высота области перетаскивания
-					ZIndex = 3 -- Убедимся, что область находится поверх других элементов
+					Size = UDim2.new(1, -6, 0, 25),
+					ZIndex = 3
 				})
 				
 				-- Добавляем текст с названием UI
@@ -307,35 +306,62 @@
 					ZIndex = 4
 				})
 
-				utility:CreateConnection(DragArea.InputBegan, function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-						local MousePos = utility:MouseLocation()
-						-- Устанавливаем смещение относительно текущей позиции мыши
-						Window.Dragging = true
-						Window.DragOffset = ScreenGui_MainFrame.AbsolutePosition - MousePos
+				-- Переменные для отслеживания состояния перетаскивания
+				local dragToggle = false
+				local dragStart = Vector2.new(0, 0)
+				local startPos = Vector2.new(0, 0)
+
+				-- Начало перетаскивания
+				utility:CreateConnection(DragArea.InputBegan, function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 then
+						dragToggle = true
+						dragStart = input.Position
+						startPos = ScreenGui_MainFrame.Position
+						
+						-- Анимация при нажатии
+						tws:Create(DragArea, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
 					end
 				end)
-				
-				utility:CreateConnection(DragArea.InputEnded, function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-						Window.Dragging = false
+
+				-- Завершение перетаскивания
+				utility:CreateConnection(DragArea.InputEnded, function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 then
+						dragToggle = false
+						-- Анимация при отпускании
+						tws:Create(DragArea, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(20, 20, 20)}):Play()
 					end
 				end)
-				
-				-- Также обрабатываем InputEnded глобально, чтобы предотвратить "залипание" перетаскивания
-				utility:CreateConnection(uis.InputEnded, function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-						Window.Dragging = false
+
+				-- Обработка перемещения
+				utility:CreateConnection(uis.InputChanged, function(input)
+					if input.UserInputType == Enum.UserInputType.MouseMovement and dragToggle then
+						local delta = input.Position - dragStart
+						local newPosition = UDim2.new(
+							startPos.X.Scale,
+							startPos.X.Offset + delta.X,
+							startPos.Y.Scale,
+							startPos.Y.Offset + delta.Y
+						)
+						
+						-- Плавное перемещение с ограничениями
+						local bounds = ScreenGui_MainFrame.AbsoluteSize
+						local newAbsolutePosition = Vector2.new(
+							math.clamp(newPosition.X.Offset, 0, workspace.CurrentCamera.ViewportSize.X - bounds.X),
+							math.clamp(newPosition.Y.Offset, 0, workspace.CurrentCamera.ViewportSize.Y - bounds.Y)
+						)
+						
+						-- Применяем плавное перемещение
+						tws:Create(ScreenGui_MainFrame, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {
+							Position = UDim2.new(
+								newPosition.X.Scale,
+								newAbsolutePosition.X,
+								newPosition.Y.Scale,
+								newAbsolutePosition.Y
+							)
+						}):Play()
 					end
 				end)
-				
-				utility:CreateConnection(uis.InputChanged, function(Input)
-					if Window.Dragging and Input.UserInputType == Enum.UserInputType.MouseMovement then
-						-- Плавное перемещение окна
-						ScreenGui_MainFrame.Position = UDim2.new(0, utility:MouseLocation().X + Window.DragOffset.X, 0, utility:MouseLocation().Y + Window.DragOffset.Y)
-					end
-				end)
-				
+
 				-- Обработка глобальных нажатий клавиш
 				
 				utility:CreateConnection(uis.InputBegan, function(Input)
