@@ -389,11 +389,23 @@ function library:CreatePage(Properties)
 			ZIndex = 2
 		})
 		--
+		-- Создаём основной контейнер для содержимого страницы
+		local Page_Frame = utility:RenderObject("Frame", {
+			BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+			BackgroundTransparency = 1,
+			BorderColor3 = Color3.fromRGB(0, 0, 0),
+			BorderSizePixel = 0,
+			Parent = Page.Window["PagesHolder"],
+			Size = UDim2.new(1, 0, 1, 0),
+			Visible = false
+		})
+		Page.Page_Frame = Page_Frame
+		--
 		do -- // Functions
 			function Page:Set(state)
 				Page.Open = state
 				--
-				Page_Page.Visible = Page.Open
+				Page.Page_Frame.Visible = Page.Open
 				Page_Tab_Border.Visible = Page.Open
 				Page_Tab_Image.ImageColor3 = Page.Open and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(90, 90, 90)
 				--
