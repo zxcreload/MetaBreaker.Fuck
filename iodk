@@ -20,30 +20,43 @@ end
 -- [[ // Variables // ]] 
 local tws = game:GetService("TweenService")
 local uis = game:GetService("UserInputService")
-local cre = game:GetService("CoreGui")
+local cre = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 -- [[ // Functions // ]]
-function utility:RenderObject(RenderType, RenderProperties, RenderHidden)
-	local Render = Instance.new(RenderType)
-	--
-	if RenderProperties and typeof(RenderProperties) == "table" then
-		for Property, Value in pairs(RenderProperties) do
-			if Property ~= "RenderTime" then
-				Render[Property] = Value
-			end
-		end
-	end
-	--
-	library.Renders[#library.Renders + 1] = {Render, RenderProperties, RenderHidden, RenderProperties["RenderTime"] or nil}
-	--
-	return Render
+function utility:RenderObject(RenderType, RenderProperties)
+    local Render = Instance.new(RenderType)
+    
+    if RenderProperties then
+        for Property, Value in pairs(RenderProperties) do
+            if Property == "Parent" then
+                continue -- Устанавливаем родителя последним
+            end
+            Render[Property] = Value
+        end
+        
+        if RenderProperties["Parent"] then
+            Render.Parent = RenderProperties["Parent"]
+        end
+    end
+    
+    library.Renders[#library.Renders + 1] = {
+        Instance = Render,
+        Properties = RenderProperties
+    }
+    
+    return Render
 end
 --
 function utility:CreateConnection(ConnectionType, ConnectionCallback)
-	local Connection = ConnectionType:Connect(ConnectionCallback)
-	--
-	library.Connections[#library.Connections + 1] = Connection
-	--
-	return Connection
+    local success, Connection = pcall(function()
+        return ConnectionType:Connect(ConnectionCallback)
+    end)
+    
+    if success and Connection then
+        library.Connections[#library.Connections + 1] = Connection
+        return Connection
+    end
+    warn("Failed to create connection")
+    return nil
 end
 --
 function utility:MouseLocation()
@@ -83,14 +96,14 @@ function library:CreateWindow(Properties)
 	}
 	--
 	do
-		local ScreenGui = utility:RenderObject("ScreenGui", {
-			DisplayOrder = 9999,
-			Enabled = true,
-			IgnoreGuiInset = true,
-			Parent = cre,
-			ResetOnSpawn = false,
-			ZIndexBehavior = "Global"
-		})
+		local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "GameSenseUI"
+ScreenGui.DisplayOrder = 9999
+ScreenGui.Enabled = true
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui.Parent = cre
 		-- //
 		local ScreenGui_MainFrame = utility:RenderObject("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -297,15 +310,22 @@ function library:CreateWindow(Properties)
 			end
 			--
 			function Window:Unload()
-				ScreenGui:Remove()
-				--
-				for index, connection in pairs(library.Connections) do
-					connection:Disconnect()
-				end
-				--
-				library = nil
-				utility = nil
-			end
+    if ScreenGui and ScreenGui.Parent then
+        ScreenGui:Destroy()
+    end
+    
+    for index, connection in pairs(library.Connections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    
+    table.clear(library.Connections)
+    table.clear(library.Renders)
+    
+    library = nil
+    utility = nil
+end
 		end
 		--
 		do -- // Index Setting
@@ -1492,16 +1512,10 @@ do -- // Content
 							InputCheck = utility:CreateConnection(uis.InputBegan, function(Input)
 								if Content.Content.Open and Input.UserInputType == Enum.UserInputType.MouseButton1 then
 									local Mouse = utility:MouseLocation()
-									--
-									if not (Mouse.X > Content_Open_Holder.AbsolutePosition.X and Mouse.Y > (Content_Open_Holder.AbsolutePosition.Y + 36) and Mouse.X < (Content_Open_Holder.AbsolutePosition.X + Content_Open_Holder.AbsoluteSize.X) and Mouse.Y < (Content_Open_Holder.AbsolutePosition.Y + Content_Open_Holder.AbsoluteSize.Y + 36)) then
-										Content.Section:CloseContent()
-									end
 								end
 							end)
 						end
-					end
-				end
-				--
+						--
 				do -- // Connections
 					utility:CreateConnection(Content_Holder_Button.MouseButton1Down, function(Input)
 						if Content.Content.Open then
@@ -2444,4 +2458,7 @@ do -- // Content
 			return Content
 		end
 	end
-end return library
+end
+end
+end
+return library
