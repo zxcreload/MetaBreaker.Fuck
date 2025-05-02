@@ -1,0 +1,245 @@
+-- Получение необходимых сервисов
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+-- Ожидание появления персонажа и получение HumanoidRootPart
+local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HRP = Char:WaitForChild("HumanoidRootPart")
+local Hum = Char:WaitForChild("Humanoid")
+
+-- Переменные для анти-аима
+local teleportConnection = nil
+local isBeingAimedAt = false
+local lastAimedAtTime = tick()
+local ANTI_AIM_TIMEOUT = 1 -- 5 секунд без прицеливания для отключения desync
+local DESYNC_DISTANCE = 7 -- Смещение на 10 единиц
+local DESYNC_Y_OFFSET = 3.5 -- Смещение по Y (вверх/вниз)
+local antiAimEnabled = true -- Флаг для ручного включения/выключения
+local lastOffsetChange = tick()
+local OFFSET_CHANGE_INTERVAL = 0.05 -- Интервал смены направления (0.05 сек)
+local currentDirectionIndex = 0 -- Текущее направление смещения
+local ROTATION_RANGE = math.rad(360) -- Диапазон поворота ±45 градусов
+
+-- Возможные направления смещения (включая смещение по Y)
+local directions = {
+    Vector3.new(0, 0, -DESYNC_DISTANCE),                  -- Вперед
+    Vector3.new(0, 0, DESYNC_DISTANCE),                   -- Назад
+    Vector3.new(-DESYNC_DISTANCE, 0, 0),                  -- Влево
+    Vector3.new(DESYNC_DISTANCE, 0, 0),                   -- Вправо
+    Vector3.new(-DESYNC_DISTANCE, 0, -DESYNC_DISTANCE),   -- Вперед-влево
+    Vector3.new(DESYNC_DISTANCE, 0, -DESYNC_DISTANCE),    -- Вперед-вправо
+    Vector3.new(-DESYNC_DISTANCE, 0, DESYNC_DISTANCE),    -- Назад-влево
+    Vector3.new(DESYNC_DISTANCE, 0, DESYNC_DISTANCE),     -- Назад-вправо
+    Vector3.new(0, DESYNC_Y_OFFSET, 0),                   -- Вверх
+    Vector3.new(0, -DESYNC_Y_OFFSET, 0),                  -- Вниз
+    Vector3.new(0, DESYNC_Y_OFFSET, -DESYNC_DISTANCE),    -- Вперед-вверх
+    Vector3.new(0, DESYNC_Y_OFFSET, DESYNC_DISTANCE),     -- Назад-вверх
+    Vector3.new(-DESYNC_DISTANCE, DESYNC_Y_OFFSET, 0),    -- Влево-вверх
+    Vector3.new(DESYNC_DISTANCE, DESYNC_Y_OFFSET, 0),     -- Вправо-вверх
+    Vector3.new(0, -DESYNC_Y_OFFSET, -DESYNC_DISTANCE),   -- Вперед-вниз
+    Vector3.new(0, -DESYNC_Y_OFFSET, DESYNC_DISTANCE),    -- Назад-вниз
+    Vector3.new(-DESYNC_DISTANCE, -DESYNC_Y_OFFSET, 0),   -- Влево-вниз
+    Vector3.new(DESYNC_DISTANCE, -DESYNC_Y_OFFSET, 0)     -- Вправо-вниз
+}
+
+-- Настраиваемые офсеты для позиции камеры
+local cameraOffsetX = 0
+local cameraOffsetY = 2.02 -- По умолчанию чуть выше головы
+local cameraOffsetZ = 0
+
+-- Переменная для хранения Part для камеры
+local cameraSubjectPart = nil
+
+-- Функция для создания невидимого Part для камеры
+local function createCameraPart()
+    local part = Instance.new("Part")
+    part.Name = "CameraFollowPart"
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Size = Vector3.new(0.1, 0.1, 0.1)
+    part.Parent = Workspace
+
+    -- Обновление позиции Part на основе реальной позиции персонажа
+    local function updatePosition()
+        if HRP then
+            part.CFrame = HRP.CFrame * CFrame.new(cameraOffsetX, cameraOffsetY, cameraOffsetZ)
+        end
+    end
+
+    -- Подключение к RenderStepped для обновления позиции и камеры
+    local renderSteppedConnection = RunService.RenderStepped:Connect(function()
+        updatePosition()
+        Workspace.CurrentCamera.CameraSubject = part
+    end)
+
+    -- Возвращаем функцию для очистки
+    return function()
+        renderSteppedConnection:Disconnect()
+        part:Destroy()
+    end
+end
+
+-- Функция для обработки добавления нового персонажа
+local function onCharacterAdded(character)
+    Char = character
+    HRP = Char:WaitForChild("HumanoidRootPart")
+    Hum = Char:WaitForChild("Humanoid")
+
+    -- Уничтожаем старый Part, если он существует
+    if cameraSubjectPart then
+        cameraSubjectPart()
+    end
+
+    -- Создаем новый Part для камеры
+    cameraSubjectPart = createCameraPart()
+
+    -- Очистка при удалении персонажа
+    character.AncestryChanged:Connect(function()
+        if not character:IsDescendantOf(Workspace) then
+            if cameraSubjectPart then
+                cameraSubjectPart()
+            end
+        end
+    end)
+
+    -- Перезапускаем анти-аим, если он был активен
+    if teleportConnection then
+        teleportConnection:Disconnect()
+        teleportConnection = RunService.Heartbeat:Connect(performAntiAim)
+    end
+end
+
+-- Подключение к событию добавления персонажа
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
+end
+
+-- Функция для проверки, целится ли игрок в локального игрока или его desync
+local function isPlayerAimingAtLocalOrDesync(targetPlayer, desyncPos)
+    -- Проверяем, существует ли персонаж и BodyEffects
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("BodyEffects") then
+        return false
+    end
+
+    local bodyEffects = targetPlayer.Character.BodyEffects
+    -- Проверяем наличие MousePos и его Value
+    local mousePosInstance = bodyEffects:FindFirstChild("MousePos")
+    if not mousePosInstance or not mousePosInstance:IsA("Vector3Value") then
+        return false
+    end
+
+    local aimPos = mousePosInstance.Value
+    if not aimPos then
+        return false
+    end
+
+    -- Проверяем, насколько близко точка прицела к локальному игроку (реальная позиция)
+    local localHRPPos = HRP.Position
+    local localHead = Char:FindFirstChild("Head")
+    local localHeadPos = localHead and localHead.Position or localHRPPos
+    local distanceToHRP = (aimPos - localHRPPos).Magnitude
+    local distanceToHead = (aimPos - localHeadPos).Magnitude
+
+    -- Проверяем, насколько близко точка прицела к desync позиции
+    local distanceToDesync = (aimPos - desyncPos).Magnitude
+
+    -- Считаем, что игрок целится, если прицел близко к HRP, голове или desync
+    return distanceToHRP < 5 or distanceToHead < 5 or distanceToDesync < 5
+end
+
+-- Функция для выполнения анти-аима
+local function performAntiAim()
+    if not antiAimEnabled then
+        return
+    end
+
+    -- Сохраняем текущую позицию
+    local originalCFrame = HRP.CFrame
+
+    -- Меняем направление и поворот каждые 0.05 секунды
+    if tick() - lastOffsetChange >= OFFSET_CHANGE_INTERVAL then
+        currentDirectionIndex = (currentDirectionIndex % #directions) + 1
+        lastOffsetChange = tick()
+    end
+
+    -- Получаем текущее направление
+    local baseOffset = directions[currentDirectionIndex]
+
+    -- Генерируем случайный поворот по осям X, Y, Z (±45 градусов)
+    local randomRotX = math.random(-ROTATION_RANGE, ROTATION_RANGE)
+    local randomRotY = math.random(-ROTATION_RANGE, ROTATION_RANGE)
+    local randomRotZ = math.random(-ROTATION_RANGE, ROTATION_RANGE)
+
+    -- Вычисляем desync позицию
+    local desyncCFrame = originalCFrame
+        * CFrame.new(baseOffset.X, baseOffset.Y, baseOffset.Z) -- Смещение (включая Y)
+        * CFrame.Angles(randomRotX, randomRotY, randomRotZ) -- Поворот
+    local desyncPos = desyncCFrame.Position
+
+    -- Проверяем, целится ли кто-то в локального игрока или его desync
+    local isAimedAt = false
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            if isPlayerAimingAtLocalOrDesync(player, desyncPos) then
+                isAimedAt = true
+                lastAimedAtTime = tick() -- Сбрасываем таймер
+                break
+            end
+        end
+    end
+
+    -- Если таймер истек, не применяем desync
+    if tick() - lastAimedAtTime >= ANTI_AIM_TIMEOUT then
+        return
+    end
+
+    -- Применяем desync
+    HRP.CFrame = desyncCFrame
+    RunService.RenderStepped:Wait()
+    HRP.CFrame = originalCFrame
+end
+
+-- Функция для включения/выключения анти-аима
+local function toggleAntiAim()
+    if teleportConnection then
+        teleportConnection:Disconnect()
+        teleportConnection = nil
+        antiAimEnabled = false
+        print("Anti-aim отключен")
+    else
+        teleportConnection = RunService.Heartbeat:Connect(performAntiAim)
+        antiAimEnabled = true
+        print("Anti-aim включен")
+    end
+end
+
+-- Автоматически включаем анти-аим при запуске
+toggleAntiAim()
+
+-- Обработка чат-команд для управления анти-аимом и офсетами камеры
+game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.OnMessageDoneFiltering:Connect(function(messageObj)
+    if messageObj.FromSpeaker == LocalPlayer.Name then
+        if messageObj.Message == "/toggledesync" then
+            toggleAntiAim()
+        elseif messageObj.Message:match("^/camoffsetx (%-?%d*%.?%d*)$") then
+            cameraOffsetX = tonumber(messageObj.Message:match("^/camoffsetx (%-?%d*%.?%d*)$")) or 0
+            print("Camera X offset set to: " .. cameraOffsetX)
+        elseif messageObj.Message:match("^/camoffsety (%-?%d*%.?%d*)$") then
+            cameraOffsetY = tonumber(messageObj.Message:match("^/camoffsety (%-?%d*%.?%d*)$")) or 0
+            print("Camera Y offset set to: " .. cameraOffsetY)
+        elseif messageObj.Message:match("^/camoffsetz (%-?%d*%.?%d*)$") then
+            cameraOffsetZ = tonumber(messageObj.Message:match("^/camoffsetz (%-?%d*%.?%d*)$")) or 0
+            print("Camera Z offset set to: " .. cameraOffsetZ)
+        elseif messageObj.Message:match("^/camoffset (%-?%d*%.?%d*) (%-?%d*%.?%d*) (%-?%d*%.?%d*)$") then
+            local x, y, z = messageObj.Message:match("^/camoffset (%-?%d*%.?%d*) (%-?%d*%.?%d*) (%-?%d*%.?%d*)$")
+            cameraOffsetX = tonumber(x) or 0
+            cameraOffsetY = tonumber(y) or 0
+            cameraOffsetZ = tonumber(z) or 0
+            print("Camera offsets set to: X=" .. cameraOffsetX .. ", Y=" .. cameraOffsetY .. ", Z=" .. cameraOffsetZ)
+        end
+    end
+end)
