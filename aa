@@ -1,0 +1,413 @@
+-- Получение необходимых сервисов
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local TextChatService = game:GetService("TextChatService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Ожидание появления персонажа и получение HumanoidRootPart
+local Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HRP = Char:WaitForChild("HumanoidRootPart")
+local Hum = Char:WaitForChild("Humanoid")
+
+-- Переменные для анти-аима
+local teleportConnection = nil
+local lastAimedAtTime = tick()
+local ANTI_AIM_TIMEOUT = 1.5 -- 5 секунд без прицеливания для отключения desync
+local DESYNC_DISTANCE_MIN = 3 -- Минимальная дистанция смещения
+local DESYNC_DISTANCE_MAX = 18 -- Максимальная дистанция смещения
+local DESYNC_Y_OFFSET = 4 -- Смещение по Y (вверх/вниз)
+local antiAimEnabled = true -- Флаг для ручного включения/выключения
+local lastOffsetChange = tick()
+local OFFSET_CHANGE_INTERVAL_MIN = 0.01 -- Минимальный интервал смены направления
+local OFFSET_CHANGE_INTERVAL_MAX = 0.04 -- Максимальный интервал смены направления
+local currentDirectionIndex = 0 -- Текущее направление смещения
+local ROTATION_RANGE = math.rad(360) -- Диапазон поворота ±360 градусов
+
+-- Функция для проверки, целится ли игрок в локального игрока или его desync
+local function isPlayerAimingAtLocalOrDesync(targetPlayer, desyncPos)
+    -- Проверяем, существует ли персонаж и BodyEffects
+    if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("BodyEffects") then
+        return false
+    end
+
+    local bodyEffects = targetPlayer.Character.BodyEffects
+    -- Проверяем наличие MousePos и его Value
+    local mousePosInstance = bodyEffects:FindFirstChild("MousePos")
+    if not mousePosInstance or not mousePosInstance:IsA("Vector3Value") then
+        return false
+    end
+
+    local aimPos = mousePosInstance.Value
+    if not aimPos then
+        return false
+    end
+
+    -- Проверяем, насколько близко точка прицела к локальному игроку (реальная позиция)
+    local localHRPPos = HRP.Position
+    local localHead = Char:FindFirstChild("Head")
+    local localHeadPos = localHead and localHead.Position or localHRPPos
+    local distanceToHRP = (aimPos - localHRPPos).Magnitude
+    local distanceToHead = (aimPos - localHeadPos).Magnitude
+
+    -- Проверяем, насколько близко точка прицела к desync позиции
+    local distanceToDesync = (aimPos - desyncPos).Magnitude
+
+    -- Считаем, что игрок целится, если прицел близко к HRP, голове или desync
+    return distanceToHRP < 5 or distanceToHead < 5 or distanceToDesync < 5
+end
+
+-- Функция для вычисления смещения относительно линии прицеливания с эффектом неожиданности
+local function getAimingBasedOffset()
+    local aimingPlayers = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            if isPlayerAimingAtLocalOrDesync(player, HRP.Position) then
+                table.insert(aimingPlayers, player)
+            end
+        end
+    end
+
+    if #aimingPlayers == 0 then
+        return nil -- Нет игроков, которые целятся
+    end
+
+    -- Выбираем случайного игрока из тех, кто целится
+    local randomIndex = math.random(1, #aimingPlayers)
+    local aimingPlayer = aimingPlayers[randomIndex]
+
+    -- Проверяем наличие всех необходимых объектов
+    if not aimingPlayer.Character or not aimingPlayer.Character:FindFirstChild("BodyEffects") then
+        return nil
+    end
+    local bodyEffects = aimingPlayer.Character.BodyEffects
+    local mousePosInstance = bodyEffects:FindFirstChild("MousePos")
+    if not mousePosInstance or not mousePosInstance:IsA("Vector3Value") then
+        return nil
+    end
+
+    -- Получаем позицию прицела и позицию игрока
+    local aimPos = mousePosInstance.Value
+    local playerPos = aimingPlayer.Character.HumanoidRootPart.Position
+
+    -- Вычисляем вектор прицеливания
+    local aimVector = (aimPos - playerPos).Unit
+
+    -- Вычисляем перпендикулярный вектор в плоскости XZ
+    local perpVector = Vector3.new(-aimVector.Z, 0, aimVector.X).Unit
+
+    -- Случайно выбираем сторону (влево или вправо) и амплитуду смещения
+    local side = math.random() > 0.5 and 1 or -1
+    local randomDistance = math.random(DESYNC_DISTANCE_MIN, DESYNC_DISTANCE_MAX)
+    local offset = perpVector * side * randomDistance
+
+    -- Добавляем случайное смещение по Y для неожиданности
+    local randomYOffset = math.random(-DESYNC_Y_OFFSET, DESYNC_Y_OFFSET)
+    offset = offset + Vector3.new(0, randomYOffset, 0)
+
+    return offset
+end
+
+-- Возможные направления смещения (включая смещение по Y)
+local directions = {
+    -- Динамическое направление на основе линии прицеливания добавлено в начало
+    getAimingBasedOffset() or Vector3.new(0, 0, 0),      -- Динамическое смещение или нулевой вектор, если никто не целится
+    Vector3.new(0, 0, -DESYNC_DISTANCE_MAX),             -- Вперед
+    Vector3.new(0, 0, DESYNC_DISTANCE_MAX),              -- Назад
+    Vector3.new(-DESYNC_DISTANCE_MAX, 0, 0),             -- Влево
+    Vector3.new(DESYNC_DISTANCE_MAX, 0, 0),              -- Вправо
+    Vector3.new(-DESYNC_DISTANCE_MAX, 0, -DESYNC_DISTANCE_MAX),   -- Вперед-влево
+    Vector3.new(DESYNC_DISTANCE_MAX, 0, -DESYNC_DISTANCE_MAX),    -- Вперед-вправо
+    Vector3.new(-DESYNC_DISTANCE_MAX, 0, DESYNC_DISTANCE_MAX),    -- Назад-влево
+    Vector3.new(DESYNC_DISTANCE_MAX, 0, DESYNC_DISTANCE_MAX),     -- Назад-вправо
+    Vector3.new(0, DESYNC_Y_OFFSET, 0),                   -- Вверх
+    Vector3.new(0, -DESYNC_Y_OFFSET, 0),                  -- Вниз
+    Vector3.new(0, DESYNC_Y_OFFSET, -DESYNC_DISTANCE_MAX),    -- Вперед-вверх
+    Vector3.new(0, DESYNC_Y_OFFSET, DESYNC_DISTANCE_MAX),     -- Назад-вверх
+    Vector3.new(-DESYNC_DISTANCE_MAX, DESYNC_Y_OFFSET, 0),    -- Влево-вверх
+    Vector3.new(DESYNC_DISTANCE_MAX, DESYNC_Y_OFFSET, 0),     -- Вправо-вверх
+    Vector3.new(0, -DESYNC_Y_OFFSET, -DESYNC_DISTANCE_MAX),   -- Вперед-вниз
+    Vector3.new(0, -DESYNC_Y_OFFSET, DESYNC_DISTANCE_MAX),    -- Назад-вниз
+    Vector3.new(-DESYNC_DISTANCE_MAX, -DESYNC_Y_OFFSET, 0),   -- Влево-вниз
+    Vector3.new(DESYNC_DISTANCE_MAX, -DESYNC_Y_OFFSET, 0)     -- Вправо-вниз
+}
+
+-- Настраиваемые офсеты для позиции камеры
+local cameraOffsetX = 0
+local cameraOffsetY = 2.02 -- По умолчанию чуть выше головы
+local cameraOffsetZ = 0
+
+-- Переменная для хранения Part для камеры
+local cameraSubjectPart = nil
+
+-- Функция для создания невидимого Part для камеры
+local function createCameraPart()
+    local part = Instance.new("Part")
+    part.Name = "CameraFollowPart"
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Size = Vector3.new(0.1, 0.1, 0.1)
+    part.Parent = Workspace
+
+    -- Обновление позиции Part на основе реальной позиции персонажа
+    local function updatePosition()
+        if HRP then
+            part.CFrame = HRP.CFrame * CFrame.new(cameraOffsetX, cameraOffsetY, cameraOffsetZ)
+        end
+    end
+
+    -- Подключение к RenderStepped для обновления позиции и камеры
+    local renderSteppedConnection = RunService.RenderStepped:Connect(function()
+        updatePosition()
+        Workspace.CurrentCamera.CameraSubject = part
+    end)
+
+    -- Возвращаем функцию для очистки
+    return function()
+        renderSteppedConnection:Disconnect()
+        part:Destroy()
+    end
+end
+
+-- Функция для обработки добавления нового персонажа
+local function onCharacterAdded(character)
+    Char = character
+    HRP = Char:WaitForChild("HumanoidRootPart")
+    Hum = Char:WaitForChild("Humanoid")
+
+    -- Уничтожаем старый Part, если он существует
+    if cameraSubjectPart then
+        cameraSubjectPart()
+    end
+
+    -- Создаем новый Part для камеры
+    cameraSubjectPart = createCameraPart()
+
+    -- Очистка при удалении персонажа
+    character.AncestryChanged:Connect(function()
+        if not character:IsDescendantOf(Workspace) then
+            if cameraSubjectPart then
+                cameraSubjectPart()
+            end
+        end
+    end)
+
+    -- Перезапускаем анти-аим, если он был активен
+    if teleportConnection then
+        teleportConnection:Disconnect()
+        teleportConnection = RunService.Heartbeat:Connect(performAntiAim)
+    end
+end
+
+-- Подключение к событию добавления персонажа
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+if LocalPlayer.Character then
+    onCharacterAdded(LocalPlayer.Character)
+end
+
+-- Функция для выполнения анти-аима
+local function performAntiAim()
+    if not antiAimEnabled then
+        return
+    end
+
+    -- Сохраняем текущую позицию
+    local originalCFrame = HRP.CFrame
+
+    -- Проверяем, целится ли кто-то в локального игрока или его desync
+    local isAimedAt = false
+    local desyncPos = originalCFrame.Position -- Используем текущую позицию как desync для проверки
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            if isPlayerAimingAtLocalOrDesync(player, desyncPos) then
+                isAimedAt = true
+                lastAimedAtTime = tick() -- Сбрасываем таймер только если кто-то целится
+                break
+            end
+        end
+    end
+
+    -- Если таймер истек, останавливаем desync
+    if tick() - lastAimedAtTime >= ANTI_AIM_TIMEOUT and not isAimedAt then
+        return
+    end
+
+    -- Меняем направление и поворот с случайным интервалом
+    local randomInterval = math.random(OFFSET_CHANGE_INTERVAL_MIN * 1000, OFFSET_CHANGE_INTERVAL_MAX * 1000) / 1000
+    if tick() - lastOffsetChange >= randomInterval then
+        currentDirectionIndex = (currentDirectionIndex % #directions) + 1
+        -- Обновляем первое направление динамически
+        directions[1] = getAimingBasedOffset() or Vector3.new(0, 0, 0)
+        lastOffsetChange = tick()
+    end
+
+    -- Получаем текущее направление
+    local baseOffset = directions[currentDirectionIndex] or Vector3.new(0, 0, 0)
+
+    -- Генерируем случайный поворот по осям X, Y, Z (±360 градусов)
+    local randomRotX = math.random(-ROTATION_RANGE, ROTATION_RANGE)
+    local randomRotY = math.random(-ROTATION_RANGE, ROTATION_RANGE)
+    local randomRotZ = math.random(-ROTATION_RANGE, ROTATION_RANGE)
+
+    -- Вычисляем desync позицию
+    local desyncCFrame = originalCFrame
+        * CFrame.new(baseOffset.X, baseOffset.Y, baseOffset.Z) -- Смещение (включая Y)
+        * CFrame.Angles(randomRotX, randomRotY, randomRotZ) -- Поворот
+    desyncPos = desyncCFrame.Position
+
+    -- Применяем desync
+    HRP.CFrame = desyncCFrame
+    RunService.RenderStepped:Wait()
+    HRP.CFrame = originalCFrame
+end
+
+-- Функция для включения/выключения анти-аима
+local function toggleAntiAim()
+    if teleportConnection then
+        teleportConnection:Disconnect()
+        teleportConnection = nil
+        antiAimEnabled = false
+        print("Anti-aim отключен")
+    else
+        teleportConnection = RunService.Heartbeat:Connect(performAntiAim)
+        antiAimEnabled = true
+        print("Anti-aim включен")
+    end
+end
+
+-- Автоматически включаем анти-аим при запуске
+toggleAntiAim()
+
+-- Обработка чат-команд через TextChatService
+local function setupChatCommands()
+    -- Проверяем, доступен ли TextChatService
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        -- Новая чат-система (TextChatService)
+        local textChannels = TextChatService:WaitForChild("TextChannels")
+        local rbxtsChannel = textChannels:WaitForChild("RBXGeneral") -- Используем общий канал
+
+        rbxtsChannel.MessageReceived:Connect(function(textChatMessage)
+            if textChatMessage.TextSource.UserId == LocalPlayer.UserId then
+                local message = textChatMessage.Text
+                if message == "/toggledesync" then
+                    toggleAntiAim()
+                elseif message:match("^/camoffsetx (%-?%d*%.?%d*)$") then
+                    cameraOffsetX = tonumber(message:match("^/camoffsetx (%-?%d*%.?%d*)$")) or 0
+                    print("Camera X offset set to: " .. cameraOffsetX)
+                elseif message:match("^/camoffsety (%-?%d*%.?%d*)$") then
+                    cameraOffsetY = tonumber(message:match("^/camoffsety (%-?%d*%.?%d*)$")) or 0
+                    print("Camera Y offset set to: " .. cameraOffsetY)
+                elseif message:match("^/camoffsetz (%-?%d*%.?%d*)$") then
+                    cameraOffsetZ = tonumber(message:match("^/camoffsetz (%-?%d*%.?%d*)$")) or 0
+                    print("Camera Z offset set to: " .. cameraOffsetZ)
+                elseif message:match("^/camoffset (%-?%d*%.?%d*) (%-?%d*%.?%d*) (%-?%d*%.?%d*)$") then
+                    local x, y, z = message:match("^/camoffset (%-?%d*%.?%d*) (%-?%d*%.?%d*) (%-?%d*%.?%d*)$")
+                    cameraOffsetX = tonumber(x) or 0
+                    cameraOffsetY = tonumber(y) or 0
+                    cameraOffsetZ = tonumber(z) or 0
+                    print("Camera offsets set to: X=" .. cameraOffsetX .. ", Y=" .. cameraOffsetY .. ", Z=" .. cameraOffsetZ)
+                end
+            end
+        end)
+    else
+        -- Старая чат-система (DefaultChatSystemChatEvents)
+        local success, chatEvents = pcall(function()
+            return game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
+        end)
+        if success and chatEvents then
+            chatEvents.OnMessageDoneFiltering:Connect(function(messageObj)
+                if messageObj.FromSpeaker == LocalPlayer.Name then
+                    if messageObj.Message == "/toggledesync" then
+                        toggleAntiAim()
+                    elseif messageObj.Message:match("^/camoffsetx (%-?%d*%.?%d*)$") then
+                        cameraOffsetX = tonumber(messageObj.Message:match("^/camoffsetx (%-?%d*%.?%d*)$")) or 0
+                        print("Camera X offset set to: " .. cameraOffsetX)
+                    elseif messageObj.Message:match("^/camoffsety (%-?%d*%.?%d*)$") then
+                        cameraOffsetY = tonumber(messageObj.Message:match("^/camoffsety (%-?%d*%.?%d*)$")) or 0
+                        print("Camera Y offset set to: " .. cameraOffsetY)
+                    elseif messageObj.Message:match("^/camoffsetz (%-?%d*%.?%d*)$") then
+                        cameraOffsetZ = tonumber(messageObj.Message:match("^/camoffsetz (%-?%d*%.?%d*)$")) or 0
+                        print("Camera Z offset set to: " .. cameraOffsetZ)
+                    elseif messageObj.Message:match("^/camoffset (%-?%d*%.?%d*) (%-?%d*%.?%d*) (%-?%d*%.?%d*)$") then
+                        local x, y, z = messageObj.Message:match("^/camoffset (%-?%d*%.?%d*) (%-?%d*%.?%d*) (%-?%d*%.?%d*)$")
+                        cameraOffsetX = tonumber(x) or 0
+                        cameraOffsetY = tonumber(y) or 0
+                        cameraOffsetZ = tonumber(z) or 0
+                        print("Camera offsets set to: X=" .. cameraOffsetX .. ", Y=" .. cameraOffsetY .. ", Z=" .. cameraOffsetZ)
+                    end
+                end
+            end)
+        else
+            warn("DefaultChatSystemChatEvents not found. Chat commands may not work.")
+        end
+    end
+end
+
+-- Настройка обработки чат-команд
+setupChatCommands()" работает при помощи изменения позции humanoidrootpart локального игрока? А можно ли добавлять для данного humanoidrootpart, highlight? например как в этом скрипте: "-- Roblox Chams Script for Executor
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Функция для создания highlight для игрока
+local function createHighlight(player)
+    -- Проверяем, что игрок не локальный и у него есть персонаж
+    if player ~= LocalPlayer and player.Character then
+        -- Проверяем, нет ли уже highlight
+        if not player.Character:FindFirstChild("Highlight") then
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "ChamsHighlight"
+            highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Красный цвет подсветки
+            highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- Белый контур
+            highlight.FillTransparency = 0.5 -- Полупрозрачность заливки
+            highlight.OutlineTransparency = 0 -- Полная непрозрачность контура
+            highlight.Adornee = player.Character
+            highlight.Parent = player.Character
+        end
+    end
+end
+
+-- Функция для удаления highlight
+local function removeHighlight(player)
+    if player.Character then
+        local highlight = player.Character:FindFirstChild("Highlight")
+        if highlight then
+            highlight:Destroy()
+        end
+    end
+end
+
+-- Обработка существующих игроков
+for _, player in ipairs(Players:GetPlayers()) do
+    createHighlight(player)
+end
+
+-- Обработка новых игроков
+Players.PlayerAdded:Connect(function(player)
+    -- Ждем, пока появится персонаж
+    player.CharacterAdded:Connect(function()
+        createHighlight(player)
+    end)
+end)
+
+-- Обработка ухода игроков
+Players.PlayerRemoving:Connect(function(player)
+    removeHighlight(player)
+end)
+
+-- Обновление при респавне/перезагрузке персонажа
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function()
+            createHighlight(player)
+        end)
+    end
+end
+
+-- Опционально: обновление каждые несколько секунд
+while true do
+    for _, player in ipairs(Players:GetPlayers()) do
+        createHighlight(player)
+    end
+    wait(5) -- Обновление каждые 5 секунд
+end
