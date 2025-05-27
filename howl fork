@@ -1,0 +1,240 @@
+-- Configuration for Silent Aim
+getgenv().SilentAim = {
+	["Options"] = {
+		Enabled = true, -- Master switch for silent aim
+	},
+	["Silent"] = {
+		Prediction = 0.12362,
+		PredictionXZ = 0.12362, -- Horizontal prediction factor for resolver
+		PredictionY = 0.12362,  -- Vertical prediction factor for resolver
+		Part = "HumanoidRootPart",
+		["MultipleParts"] = {
+			Enabled = false,
+			Parts = { "Head", "UpperTorso", "HumanoidRootPart", "LowerTorso" },
+		},
+		["Offsets"] = {
+			Jump = { Amount = 0 },
+			Fall = { Amount = 0 },
+		},
+	},
+	["Misc"] = {
+		["Checks"] = {
+			WallCheck = false,
+			TargetDeath = false,
+			["Resolver"] = {
+				Enabled = true, -- Toggle resolver on/off
+				Type = "Calculate CFrame", -- Options: "Velocity", "Move direction", "Calculate CFrame"
+			},
+		},
+	},
+}
+
+-- Prevent script from running multiple times
+if getgenv().Loaded then
+	return
+end
+
+-- Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+-- Optimization Variables
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local FindFirstChild = game.FindFirstChild
+local FindPartOnRayWithIgnoreList = Workspace.FindPartOnRayWithIgnoreList
+local GetPlayers = Players.GetPlayers
+local GetMouseLocation = UserInputService.GetMouseLocation
+local WorldToViewportPoint = Camera.WorldToViewportPoint
+local NewVector2 = Vector2.new
+local NewCFrame = CFrame.new
+local NewRay = Ray.new
+local TableFind = table.find
+local IsA = game.IsA
+local Inf = math.huge
+
+-- Resolver Variables
+local lastPosition = nil
+local lastUpdateTime = nil
+local predictedPosition = nil
+
+-- Check if player is alive
+local function IsPlayerAlive(player)
+	return player.Character and FindFirstChild(player.Character, "Humanoid") and player.Character.Humanoid.Health > 0
+end
+
+-- Wall check to ensure no obstructions
+local function WallCheck(character)
+	if not SilentAim.Misc.Checks.WallCheck then
+		return true
+	end
+	local targetPosition = character.HumanoidRootPart.Position
+	local cameraPosition = Camera.CFrame.Position
+	local distance = (targetPosition - cameraPosition).Magnitude
+	local hitPart, hitPosition = FindPartOnRayWithIgnoreList(
+		Workspace,
+		NewRay(cameraPosition, (targetPosition - cameraPosition).Unit * distance),
+		{ LocalPlayer.Character, character }
+	)
+	return hitPart == nil or (hitPosition - cameraPosition).Magnitude >= distance
+end
+
+-- Get the closest part from multiple parts
+local function GetClosestPartFromPlayerToCursor(multipleParts, character)
+	local shortestDistance = Inf
+	local closestPart = nil
+	local mousePosition = GetMouseLocation(UserInputService)
+	local parts = multipleParts.Parts
+	local indexAmount = 0
+
+	for _, part in next, character:GetChildren() do
+		if IsA(part, "BasePart") and TableFind(parts, part.Name) then
+			local onScreenPosition = WorldToViewportPoint(Camera, part.Position)
+			local distance = (NewVector2(onScreenPosition.X, onScreenPosition.Y) - mousePosition).Magnitude
+			if distance < shortestDistance then
+				closestPart = part
+				shortestDistance = distance
+			end
+			indexAmount = indexAmount + 1
+		end
+		if indexAmount >= #parts then
+			break
+		end
+	end
+	return closestPart
+end
+
+-- Get the closest player to the cursor
+local function GetClosestPlayerToCursor()
+	local shortestDistance = Inf
+	local closestPlayer = nil
+	local mousePosition = GetMouseLocation(UserInputService)
+	local part = SilentAim.Silent.Part
+
+	for _, player in next, GetPlayers(Players) do
+		local character = player.Character
+		if player ~= LocalPlayer and IsPlayerAlive(player) and WallCheck(character) and character:FindFirstChild(part) then
+			local onScreenPosition, isOnScreen = WorldToViewportPoint(Camera, character[part].Position)
+			local distance = (NewVector2(onScreenPosition.X, onScreenPosition.Y) - mousePosition).Magnitude
+			if distance < shortestDistance and isOnScreen then
+				closestPlayer = player
+				shortestDistance = distance
+			end
+		end
+	end
+	return closestPlayer
+end
+
+-- Resolver: Predict target position
+local function getPredictedPosition(targetPlayer)
+	if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Humanoid") then
+		local aimPartPos = targetPlayer.Character[SilentAim.Silent.Part].Position
+
+		if not lastPosition or not lastUpdateTime then
+			lastPosition = aimPartPos
+			lastUpdateTime = tick()
+			predictedPosition = aimPartPos
+			return predictedPosition
+		end
+
+		local currentTime = tick()
+		local deltaTime = currentTime - lastUpdateTime
+
+		local predictionResolver = SilentAim.Misc.Checks.Resolver.Type
+		if predictionResolver == "Velocity" then
+			local velocity = targetPlayer.Character[SilentAim.Silent.Part].Velocity
+			predictedPosition = aimPartPos + Vector3.new(
+				velocity.X * SilentAim.Silent.PredictionXZ,
+				velocity.Y * SilentAim.Silent.PredictionY,
+				velocity.Z * SilentAim.Silent.PredictionXZ
+			)
+		elseif predictionResolver == "Move direction" then
+			predictedPosition = aimPartPos + (targetPlayer.Character.Humanoid.MoveDirection * (SilentAim.Silent.PredictionXZ * 10))
+		elseif predictionResolver == "Calculate CFrame" then
+			if (aimPartPos - lastPosition).Magnitude < 0.001 then
+				predictedPosition = aimPartPos
+			else
+				local distance = (aimPartPos - lastPosition).Magnitude
+				local predictedDistance = (distance / deltaTime) * (0.1 * (SilentAim.Silent.PredictionXZ * 10))
+				predictedPosition = aimPartPos + (aimPartPos - lastPosition).Unit * predictedDistance
+
+				local yChange = (aimPartPos.Y - lastPosition.Y) / deltaTime * (0.1 * SilentAim.Silent.PredictionY)
+				predictedPosition = predictedPosition + Vector3.new(0, yChange, 0)
+			end
+		end
+
+		lastUpdateTime = currentTime
+		lastPosition = aimPartPos
+		return predictedPosition
+	end
+	return nil
+end
+
+-- Silent Aim Logic
+local MetaTable = getrawmetatable(game)
+local OldIndex = MetaTable.__index
+setreadonly(MetaTable, false)
+
+MetaTable.__index = function(self, key)
+	if not checkcaller() and self == LocalPlayer:GetMouse() and SilentAim.Options.Enabled then
+		if key == "Hit" or key == "Target" then
+			local targetPlayer = GetClosestPlayerToCursor()
+			if targetPlayer and targetPlayer.Character then
+				local targetPart
+				if SilentAim.Silent.MultipleParts.Enabled then
+					targetPart = GetClosestPartFromPlayerToCursor(SilentAim.Silent.MultipleParts, targetPlayer.Character)
+				else
+					targetPart = targetPlayer.Character:FindFirstChild(SilentAim.Silent.Part)
+				end
+				if targetPart then
+					local finalPosition
+					if SilentAim.Misc.Checks.Resolver.Enabled then
+						-- Use resolver for prediction
+						finalPosition = getPredictedPosition(targetPlayer)
+					else
+						-- Use default prediction
+						local velocity = targetPart.Velocity or Vector3.zero
+						finalPosition = targetPart.Position + (velocity * SilentAim.Silent.Prediction)
+					end
+
+					-- Apply offsets for jump/fall if needed
+					local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+					if humanoid and finalPosition then
+						if humanoid:GetState() == Enum.HumanoidStateType.Jumping then
+							finalPosition = finalPosition + Vector3.new(0, SilentAim.Silent.Offsets.Jump.Amount, 0)
+						elseif humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+							finalPosition = finalPosition + Vector3.new(0, SilentAim.Silent.Offsets.Fall.Amount, 0)
+						end
+					end
+					return key == "Hit" and (finalPosition and NewCFrame(finalPosition) or NewCFrame(targetPart.Position)) or targetPart
+				end
+			end
+		end
+	end
+	return OldIndex(self, key)
+end
+setreadonly(MetaTable, true)
+
+-- Handle tool fix on character spawn/respawn
+local function FixTool(character)
+	if character then
+		for _, v in next, character:GetChildren() do
+			if IsA(v, "Tool") then
+				local currentTool = v
+				currentTool.Parent = LocalPlayer:FindFirstChildOfClass("Backpack")
+				break
+			end
+		end
+	end
+end
+
+-- Initial tool fix
+FixTool(LocalPlayer.Character)
+
+-- Handle respawn
+LocalPlayer.CharacterAdded:Connect(function(character)
+	FixTool(character)
+end)
+
+getgenv().Loaded = true
